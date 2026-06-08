@@ -1,4 +1,4 @@
-import * as path from "path";
+1import * as path from "path";
 import * as fs from "fs";
 import madge from "madge";
 import type { BlockState, PanelState, ResolvedStatus } from "./types";

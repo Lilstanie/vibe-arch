@@ -185,13 +185,13 @@ body {
   transition: width .6s cubic-bezier(.2,.7,.2,1);
 }
 
-/* ── Map (DAG container) ───────────────────────────────── */
+/* ── Map — horizontal scroll container ─────────────────── */
 .map {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   position: relative;
-  padding: 18px 14px;
+  padding: 20px 0 20px 20px;
 }
 
 #edges {
@@ -201,16 +201,44 @@ body {
   z-index: 0;
 }
 
-#layers { position: relative; z-index: 1; }
-
-.layer {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 9px;
-  margin-bottom: 24px;
+/* Columns flow left → right */
+#layers {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;      /* shrink-wraps so SVG can match */
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 100%;
 }
-.layer:last-child { margin-bottom: 6px; }
+
+/* One column per topological level */
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 22px;           /* left+right padding = edge routing lane */
+  flex: 0 0 auto;
+  position: relative;
+}
+/* Thin separator between columns */
+.col + .col::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 6px; bottom: 6px;
+  width: 1px;
+  background: var(--line);
+}
+/* Level label — subtle, top of each column */
+.col-label {
+  font-size: 8.5px;
+  letter-spacing: .1em;
+  color: var(--dim2);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  text-align: center;
+  user-select: none;
+}
 
 /* ── Nodes ─────────────────────────────────────────────── */
 .node {
@@ -218,17 +246,16 @@ body {
   background: #161b22;
   border: 1px solid var(--line2);
   border-radius: 8px;
-  padding: 7px 10px;
+  padding: 8px 11px;
   cursor: pointer;
   user-select: none;
-  min-width: 88px;
-  max-width: 148px;
+  width: 164px;              /* fixed width per column */
   display: flex;
   flex-direction: column;
   gap: 3px;
   transition: transform .14s, border-color .2s, box-shadow .25s, background .25s;
 }
-.node:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.22); }
+.node:hover { transform: translateX(2px); border-color: rgba(255,255,255,.22); }
 
 .nm {
   display: flex;

@@ -96,7 +96,7 @@
     errorEl.classList.add('hidden');
     folderNameEl.textContent = s.scannedRoot || '—';
     renderProgress(s);
-    renderLayers(s);
+    renderCols(s);
     renderReady(s);
     renderUntracked(s);
     requestAnimationFrame(drawEdges);
@@ -111,31 +111,78 @@
     pCnt.textContent  = done + '/' + total;
   }
 
-  function renderLayers(s) {
+  // ── Barycentric helper ───────────────────────────────────────────────────────
+  function bary(block, neighborIdx, edges, direction) {
+    // direction 'left'  → look at deps  (edges where block is the 'to')
+    // direction 'right' → look at dependents (edges where block is the 'from')
+    const positions = edges
+      .filter(e => direction === 'left' ? e.to === block.id : e.from === block.id)
+      .map(e => neighborIdx.get(direction === 'left' ? e.from : e.to))
+      .filter(p => p !== undefined);
+    if (!positions.length) return Infinity; // no neighbors → sort to bottom
+    return positions.reduce((a, b) => a + b, 0) / positions.length;
+  }
+
+  // ── Column layout (left-to-right, barycentric sorted) ────────────────────────
+  function renderCols(s) {
     if (!s.blocks.length) {
-      layersEl.innerHTML = '<div class="empty" style="text-align:center;padding:24px">No blocks found</div>';
+      layersEl.innerHTML = '<div class="empty" style="padding:24px">No blocks found</div>';
       return;
     }
 
-    const byLevel = new Map();
-    for (const b of s.blocks) {
-      if (!byLevel.has(b.level)) byLevel.set(b.level, []);
-      byLevel.get(b.level).push(b);
+    // 1. Group by level
+    const maxLevel = Math.max(...s.blocks.map(b => b.level));
+    const cols = [];
+    for (let lv = 0; lv <= maxLevel; lv++) {
+      cols.push(s.blocks.filter(b => b.level === lv));
     }
 
-    const maxLevel = Math.max(...s.blocks.map(b => b.level));
+    // 2. Three-pass barycentric crossing minimisation
+    //    Pass 1 — forward sweep (sort by left neighbours)
+    for (let i = 1; i < cols.length; i++) {
+      const prevIdx = new Map(cols[i - 1].map((b, idx) => [b.id, idx]));
+      cols[i] = cols[i].slice().sort(
+        (a, b) => bary(a, prevIdx, s.edges, 'left') - bary(b, prevIdx, s.edges, 'left')
+      );
+    }
+    //    Pass 2 — backward sweep (sort by right neighbours)
+    for (let i = cols.length - 2; i >= 0; i--) {
+      const nextIdx = new Map(cols[i + 1].map((b, idx) => [b.id, idx]));
+      cols[i] = cols[i].slice().sort(
+        (a, b) => bary(a, nextIdx, s.edges, 'right') - bary(b, nextIdx, s.edges, 'right')
+      );
+    }
+    //    Pass 3 — forward sweep again (converge)
+    for (let i = 1; i < cols.length; i++) {
+      const prevIdx = new Map(cols[i - 1].map((b, idx) => [b.id, idx]));
+      cols[i] = cols[i].slice().sort(
+        (a, b) => bary(a, prevIdx, s.edges, 'left') - bary(b, prevIdx, s.edges, 'left')
+      );
+    }
+
+    // 3. Render
     let html = '';
     for (let lv = 0; lv <= maxLevel; lv++) {
-      const nodes = byLevel.get(lv) || [];
-      html += '<div class="layer">' + nodes.map(nodeHTML).join('') + '</div>';
+      if (!cols[lv].length) continue;
+      html += '<div class="col" data-level="' + lv + '">';
+      html += '<div class="col-label">L' + lv + '</div>';
+      html += cols[lv].map(nodeHTML).join('');
+      html += '</div>';
     }
     layersEl.innerHTML = html;
 
+    // 4. Event listeners + re-apply any existing verdicts
     layersEl.querySelectorAll('.node').forEach(n => {
-      n.addEventListener('click', () => {
-        vscode.postMessage({ type: 'cycleStatus', blockId: n.dataset.id });
-      });
+      n.addEventListener('click', () =>
+        vscode.postMessage({ type: 'cycleStatus', blockId: n.dataset.id })
+      );
     });
+    for (const [blockId, verdict] of verdicts) {
+      applyVerdictToNode(
+        layersEl.querySelector('.node[data-id="' + CSS.escape(blockId) + '"]'),
+        verdict
+      );
+    }
   }
 
   function nodeHTML(b) {
@@ -147,39 +194,47 @@
     const metaText = verdict
       ? esc(verdict.reason)
       : (b.intent ? esc(b.intent) : b.fileCount + ' file' + (b.fileCount !== 1 ? 's' : ''));
-    return '<div class="node ' + statusClass + '" data-id="' + esc(b.id) + '">' +
-      '<span class="nm"><span class="led"></span>' + esc(b.label) + aiTag + '</span>' +
-      '<span class="meta">' + metaText + '</span>' +
-      (verdict && verdict.missing.length
-        ? '<span class="missing">' + verdict.missing.slice(0, 2).map(m => '· ' + esc(m)).join(' ') + '</span>'
-        : '') +
-      '<span class="check">✓</span>' +
-    '</div>';
+    return (
+      '<div class="node ' + statusClass + '" data-id="' + esc(b.id) + '" title="' + esc(b.label) + '">' +
+        '<span class="nm"><span class="led"></span>' + esc(b.label) + aiTag + '</span>' +
+        '<span class="meta">' + metaText + '</span>' +
+        (verdict && verdict.missing.length
+          ? '<span class="missing">' + verdict.missing.slice(0, 2).map(m => '· ' + esc(m)).join(' ') + '</span>'
+          : '') +
+        '<span class="check">✓</span>' +
+      '</div>'
+    );
+  }
+
+  function applyVerdictToNode(node, verdict) {
+    if (!node) return;
+    const blockId = node.dataset.id;
+    const b = state?.blocks.find(bl => bl.id === blockId);
+    if (!b) return;
+    const html = nodeHTML(b);
+    node.outerHTML = html;
+    const fresh = layersEl.querySelector('.node[data-id="' + CSS.escape(blockId) + '"]');
+    if (fresh) {
+      fresh.addEventListener('click', () =>
+        vscode.postMessage({ type: 'cycleStatus', blockId })
+      );
+      fresh.classList.remove('pulse');
+      void fresh.offsetWidth;
+      fresh.classList.add('pulse');
+    }
   }
 
   function applyVerdict(blockId, verdict) {
-    const node = document.querySelector('.node[data-id="' + CSS.escape(blockId) + '"]');
-    if (!node) return;
-    // Re-render just this node
-    const b = state?.blocks.find(bl => bl.id === blockId);
-    if (b) node.outerHTML = nodeHTML(b); // triggers re-query
-    // Re-attach click handler
-    const newNode = document.querySelector('.node[data-id="' + CSS.escape(blockId) + '"]');
-    if (newNode) {
-      newNode.addEventListener('click', () => vscode.postMessage({ type: 'cycleStatus', blockId }));
-      newNode.classList.remove('pulse');
-      void newNode.offsetWidth;
-      newNode.classList.add('pulse');
-    }
+    applyVerdictToNode(
+      layersEl.querySelector('.node[data-id="' + CSS.escape(blockId) + '"]'),
+      verdict
+    );
     requestAnimationFrame(drawEdges);
   }
 
-  // ── Edge drawing ─────────────────────────────────────────────────────────────
+  // ── Edge drawing — left → right horizontal bezier ────────────────────────────
   function drawEdges() {
-    if (!state || !state.edges.length) {
-      svgEl.innerHTML = '';
-      return;
-    }
+    if (!state || !state.edges.length) { svgEl.innerHTML = ''; return; }
 
     const mapRect    = mapEl.getBoundingClientRect();
     const scrollLeft = mapEl.scrollLeft;
@@ -191,39 +246,51 @@
     svgEl.setAttribute('height',  H);
     svgEl.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
 
+    // Collect node positions (right-center for source, left-center for target)
     const pos = {};
-    document.querySelectorAll('.node').forEach(n => {
+    layersEl.querySelectorAll('.node').forEach(n => {
       const r = n.getBoundingClientRect();
       pos[n.dataset.id] = {
-        x:   r.left - mapRect.left + r.width  / 2 + scrollLeft,
-        top: r.top  - mapRect.top              + scrollTop,
-        bot: r.bottom - mapRect.top            + scrollTop,
+        rx: r.right - mapRect.left + scrollLeft,          // right edge x
+        lx: r.left  - mapRect.left + scrollLeft,          // left edge x
+        cy: r.top + r.height / 2 - mapRect.top + scrollTop, // vertical centre
       };
     });
 
     const blockById = {};
     for (const b of state.blocks) blockById[b.id] = b;
 
-    let paths = '';
-    for (const e of state.edges) {
-      const from = pos[e.from];
-      const to   = pos[e.to];
-      if (!from || !to) continue;
+    let out = '<defs>' +
+      '<marker id="arr" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="5" markerHeight="4" orient="auto">' +
+        '<path d="M0,0 L8,3 L0,6 Z" fill="rgba(56,189,248,.5)"/>' +
+      '</marker>' +
+      '<marker id="arr-g" viewBox="0 0 8 6" refX="7" refY="3" markerWidth="5" markerHeight="4" orient="auto">' +
+        '<path d="M0,0 L8,3 L0,6 Z" fill="rgba(52,211,153,.6)"/>' +
+      '</marker>' +
+    '</defs>';
 
-      const x1 = from.x, y1 = from.bot;
-      const x2 = to.x,   y2 = to.top;
-      const my = (y1 + y2) / 2;
+    for (const e of state.edges) {
+      const src = pos[e.from];
+      const dst = pos[e.to];
+      if (!src || !dst) continue;
+
+      const x1 = src.rx, y1 = src.cy;
+      const x2 = dst.lx, y2 = dst.cy;
+      const cx = (x1 + x2) / 2; // control-point x = midpoint → S-curve
 
       const fromDone = blockById[e.from]?.status === 'done';
-      const toActive = blockById[e.to]?.status !== 'planned';
-      const col = (fromDone && toActive) ? 'rgba(52,211,153,.55)' : 'rgba(56,189,248,.28)';
+      const toActive = blockById[e.to]?.status  !== 'planned';
+      const isGreen  = fromDone && toActive;
+      const stroke   = isGreen ? 'rgba(52,211,153,.5)' : 'rgba(56,189,248,.28)';
+      const markerId = isGreen ? 'arr-g' : 'arr';
 
-      paths += '<path d="M' + x1 + ',' + y1 +
-        ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2 +
-        '" fill="none" stroke="' + col + '" stroke-width="1.4"/>';
-      paths += '<circle cx="' + x2 + '" cy="' + y2 + '" r="2.5" fill="' + col + '"/>';
+      out += '<path d="M' + x1 + ',' + y1 +
+        ' C' + cx + ',' + y1 + ' ' + cx + ',' + y2 + ' ' + x2 + ',' + y2 + '"' +
+        ' fill="none" stroke="' + stroke + '" stroke-width="1.4"' +
+        ' marker-end="url(#' + markerId + ')"/>';
     }
-    svgEl.innerHTML = paths;
+
+    svgEl.innerHTML = out;
   }
 
   // ── Ready list ───────────────────────────────────────────────────────────────
