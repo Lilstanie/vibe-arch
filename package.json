@@ -1,0 +1,42 @@
+{
+  "name": "vibe-arch",
+  "displayName": "Vibe Arch",
+  "description": "Passive architecture monitor: folder-derived blocks, madge dependency engine, completion status at a glance.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onView:vibeArch.panel"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "vibe-arch", "title": "Vibe Arch", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "vibe-arch": [
+        { "type": "webview", "id": "vibeArch.panel", "name": "Architecture" }
+      ]
+    },
+    "commands": [
+      { "command": "vibeArch.refresh", "title": "Vibe Arch: Refresh" }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "preview": "node scripts/preview.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "madge": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/madge": "^5.0.3",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.0"
+  }
+}

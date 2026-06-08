@@ -1,0 +1,85 @@
+blocks:
+  extension_host:
+    label: Extension Entry & Lifecycle
+    intent: >-
+      VS Code extension activation, command registration, file-system watchers, and editor-event
+      wiring
+    paths:
+      - src/extension.ts
+    depends_on:
+      - panel
+  panel:
+    label: Webview Panel Provider
+    intent: >-
+      creates and manages the VS Code WebviewView, bridges messages between the UI and
+      extension-side logic, drives refresh scheduling
+    paths:
+      - src/panel.ts
+    depends_on:
+      - scanner
+      - manifest
+      - llm
+      - types
+  webview_ui:
+    label: Webview UI
+    intent: >-
+      browser-side rendering of the architecture map, block layers, SVG edges, progress indicators,
+      and user interaction (pick folder, generate, copy prompt)
+    paths:
+      - media/webview.js
+    depends_on: []
+  scanner:
+    label: Workspace Scanner
+    intent: >-
+      walks the workspace file tree, filters by extension and exclusion lists, detects stub/TODO
+      markers, invokes madge for import-graph analysis, and produces the raw file inventory
+    paths:
+      - src/scanner.ts
+    depends_on:
+      - types
+  manifest:
+    label: Manifest I/O
+    intent: >-
+      reads and writes vibe-arch.yaml, merges LLM-produced block data with persisted
+      status/metadata, keeps block ids stable across runs
+    paths:
+      - src/manifest.ts
+      - vibe-arch.yaml
+    depends_on:
+      - types
+  llm:
+    label: LLM Integration
+    intent: >-
+      builds the architecture-analysis prompt from scanned file context, calls the VS Code
+      language-model API, streams token output back to the panel, and parses the YAML response
+    paths:
+      - src/llm.ts
+    depends_on:
+      - types
+  types:
+    label: Shared Types
+    intent: >-
+      TypeScript interfaces and enums shared across extension-side modules (Block, ScanResult,
+      ManifestDoc, message payloads, etc.)
+    paths:
+      - src/types.ts
+    depends_on: []
+  headless_preview:
+    label: Headless CLI Preview
+    intent: >-
+      standalone Node script that runs the same scan-and-render pipeline outside VS Code using madge
+      and js-yaml, for terminal-based previewing and CI use
+    paths:
+      - scripts/preview.mjs
+    depends_on:
+      - manifest
+  build_config:
+    label: Build & Package Config
+    intent: >-
+      npm scripts, dependency declarations, TypeScript compilation targets, and extension manifest
+      metadata
+    paths:
+      - package.json
+    depends_on: []
+    status: done
+unassigned: []
