@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { loadManifest, writeBlockStatus } from "./manifest";
 import { blocksForFile, scanWorkspace } from "./scanner";
 import { buildPromptText, generateManifest, NoModelError } from "./llm";
+import { deepCheckAll } from "./deepcheck";
 import type { PanelState, ResolvedStatus, WebviewOutbound } from "./types";
 
 const STATUS_CYCLE: ResolvedStatus[] = ["planned", "wip", "done"];
@@ -44,6 +45,8 @@ export class VibeArchPanelProvider implements vscode.WebviewViewProvider {
         await this.handleGenerate();
       } else if (msg.type === "copyPrompt") {
         await this.handleCopyPrompt();
+      } else if (msg.type === "deepCheck") {
+        void this.handleDeepCheck();
       }
     });
 
@@ -107,6 +110,7 @@ export class VibeArchPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private generateCancellation: vscode.CancellationTokenSource | undefined;
+  private deepCheckCancellation: vscode.CancellationTokenSource | undefined;
 
   private async handleGenerate(): Promise<void> {
     const root = this.targetRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -159,6 +163,43 @@ export class VibeArchPanelProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async handleDeepCheck(): Promise<void> {
+    const root = this.targetRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root || !this.lastState?.blocks.length) return;
+
+    this.deepCheckCancellation?.cancel();
+    this.deepCheckCancellation = new vscode.CancellationTokenSource();
+    const token = this.deepCheckCancellation.token;
+
+    const blocks = this.lastState.blocks;
+    const auditable = blocks.filter((b) => b.fileCount > 0);
+    let progress = 0;
+
+    try {
+      for await (const { blockId, verdict } of deepCheckAll(blocks, root, token)) {
+        progress++;
+        // Apply verdict to our in-memory state
+        if (this.lastState) {
+          const block = this.lastState.blocks.find((b) => b.id === blockId);
+          if (block) block.deepVerdict = verdict;
+        }
+        this.post({
+          type: "deepCheckProgress",
+          blockId,
+          verdict,
+          progress,
+          total: auditable.length,
+        });
+      }
+    } catch (e) {
+      vscode.window.showErrorMessage(
+        `Deep Check error: ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+
+    this.post({ type: "deepCheckDone" });
+  }
+
   private async handleCopyPrompt(): Promise<void> {
     const root = this.targetRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) return;
@@ -204,7 +245,7 @@ export class VibeArchPanelProvider implements vscode.WebviewViewProvider {
     this.post({ type: "update", state });
   }
 
-  private post(message: { type: string; state?: PanelState; blockIds?: string[] }): void {
+  private post(message: Record<string, unknown>): void {
     void this.view?.webview.postMessage(message);
   }
 
@@ -259,8 +300,13 @@ export class VibeArchPanelProvider implements vscode.WebviewViewProvider {
 
   <div class="legend">
     <span><i class="lg-done"></i> done</span>
-    <span><i class="lg-wip"></i> wip · has TODO</span>
-    <span><i class="lg-plan"></i> planned · empty</span>
+    <span><i class="lg-wip"></i> wip</span>
+    <span><i class="lg-plan"></i> planned</span>
+    <button id="deepCheckBtn" class="deep-btn" title="AI audits each block against its intent">🔍 Deep Check</button>
+  </div>
+  <div id="deepCheckBar" class="deep-bar hidden">
+    <div class="deep-bar-fill-wrap"><div class="deep-bar-fill" id="deepBarFill"></div></div>
+    <span id="deepBarLabel">checking…</span>
   </div>
 
   <div class="sect">

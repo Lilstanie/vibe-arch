@@ -18,15 +18,29 @@
   const svgEl         = document.getElementById('edges');
   const readyList     = document.getElementById('readyList');
   const readyCnt      = document.getElementById('readyCnt');
-  const untrackedList = document.getElementById('untrackedList');
-  const untrackedCnt  = document.getElementById('untrackedCnt');
+  const untrackedList  = document.getElementById('untrackedList');
+  const untrackedCnt   = document.getElementById('untrackedCnt');
+  const deepCheckBtn   = document.getElementById('deepCheckBtn');
+  const deepCheckBar   = document.getElementById('deepCheckBar');
+  const deepBarFill    = document.getElementById('deepBarFill');
+  const deepBarLabel   = document.getElementById('deepBarLabel');
 
   let state = null;
+  // verdicts keyed by blockId — survive full re-renders
+  const verdicts = new Map();
 
   // ── Buttons ───────────────────────────────────────────────────────────────────
   pickFolderBtn.addEventListener('click', () => vscode.postMessage({ type: 'pickFolder' }));
   generateBtn.addEventListener('click',   () => vscode.postMessage({ type: 'generate' }));
   copyPromptBtn.addEventListener('click', () => vscode.postMessage({ type: 'copyPrompt' }));
+  deepCheckBtn.addEventListener('click',  () => {
+    deepCheckBtn.disabled = true;
+    deepCheckBtn.textContent = '🔍 …';
+    deepCheckBar.classList.remove('hidden');
+    deepBarFill.style.width = '0%';
+    deepBarLabel.textContent = 'starting…';
+    vscode.postMessage({ type: 'deepCheck' });
+  });
 
   // ── Message bus ──────────────────────────────────────────────────────────────
   window.addEventListener('message', (event) => {
@@ -36,6 +50,17 @@
       render(state);
     } else if (msg.type === 'pulse') {
       pulseNodes(msg.blockIds || []);
+    } else if (msg.type === 'deepCheckProgress') {
+      verdicts.set(msg.blockId, msg.verdict);
+      applyVerdict(msg.blockId, msg.verdict);
+      const pct = Math.round(msg.progress / msg.total * 100);
+      deepBarFill.style.width = pct + '%';
+      deepBarLabel.textContent = msg.blockId + ' (' + msg.progress + '/' + msg.total + ')';
+    } else if (msg.type === 'deepCheckDone') {
+      deepCheckBtn.disabled = false;
+      deepCheckBtn.textContent = '🔍 Deep Check';
+      deepBarLabel.textContent = 'done ✓';
+      setTimeout(() => deepCheckBar.classList.add('hidden'), 2000);
     }
   });
 
@@ -114,14 +139,39 @@
   }
 
   function nodeHTML(b) {
-    const meta = b.intent
-      ? esc(b.intent)
-      : b.fileCount + ' file' + (b.fileCount !== 1 ? 's' : '');
-    return '<div class="node ' + b.status + '" data-id="' + esc(b.id) + '">' +
-      '<span class="nm"><span class="led"></span>' + esc(b.label) + '</span>' +
-      '<span class="meta">' + meta + '</span>' +
+    const verdict = verdicts.get(b.id);
+    const statusClass = verdict ? verdict.status : b.status;
+    const aiTag = verdict
+      ? '<span class="ai-tag conf-' + verdict.confidence + '">✦ AI</span>'
+      : '';
+    const metaText = verdict
+      ? esc(verdict.reason)
+      : (b.intent ? esc(b.intent) : b.fileCount + ' file' + (b.fileCount !== 1 ? 's' : ''));
+    return '<div class="node ' + statusClass + '" data-id="' + esc(b.id) + '">' +
+      '<span class="nm"><span class="led"></span>' + esc(b.label) + aiTag + '</span>' +
+      '<span class="meta">' + metaText + '</span>' +
+      (verdict && verdict.missing.length
+        ? '<span class="missing">' + verdict.missing.slice(0, 2).map(m => '· ' + esc(m)).join(' ') + '</span>'
+        : '') +
       '<span class="check">✓</span>' +
     '</div>';
+  }
+
+  function applyVerdict(blockId, verdict) {
+    const node = document.querySelector('.node[data-id="' + CSS.escape(blockId) + '"]');
+    if (!node) return;
+    // Re-render just this node
+    const b = state?.blocks.find(bl => bl.id === blockId);
+    if (b) node.outerHTML = nodeHTML(b); // triggers re-query
+    // Re-attach click handler
+    const newNode = document.querySelector('.node[data-id="' + CSS.escape(blockId) + '"]');
+    if (newNode) {
+      newNode.addEventListener('click', () => vscode.postMessage({ type: 'cycleStatus', blockId }));
+      newNode.classList.remove('pulse');
+      void newNode.offsetWidth;
+      newNode.classList.add('pulse');
+    }
+    requestAnimationFrame(drawEdges);
   }
 
   // ── Edge drawing ─────────────────────────────────────────────────────────────

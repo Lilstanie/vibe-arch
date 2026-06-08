@@ -1,5 +1,12 @@
 export type ResolvedStatus = "planned" | "wip" | "done";
 
+export interface DeepVerdict {
+  status: "done" | "wip" | "planned";
+  confidence: "high" | "medium" | "low";
+  missing: string[];
+  reason: string;
+}
+
 export interface BlockState {
   id: string;
   label: string;
@@ -9,6 +16,7 @@ export interface BlockState {
   level: number;
   deps: string[];         // ids of blocks this block depends on
   matchedFiles: string[]; // relative paths
+  deepVerdict?: DeepVerdict; // set after deep check
 }
 
 export interface PanelState {
@@ -25,11 +33,14 @@ export interface PanelState {
 
 export type WebviewInbound =
   | { type: "update"; state: PanelState }
-  | { type: "pulse"; blockIds: string[] };
+  | { type: "pulse"; blockIds: string[] }
+  | { type: "deepCheckProgress"; blockId: string; verdict: DeepVerdict; progress: number; total: number }
+  | { type: "deepCheckDone" };
 
 export type WebviewOutbound =
   | { type: "ready" }
   | { type: "cycleStatus"; blockId: string }
   | { type: "pickFolder" }
   | { type: "generate" }
-  | { type: "copyPrompt" };
+  | { type: "copyPrompt" }
+  | { type: "deepCheck" };

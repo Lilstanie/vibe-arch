@@ -17,6 +17,35 @@ const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const STUB_LINE_THRESHOLD = 15;
 const TODO_RE = /\b(TODO|FIXME|XXX)\b|@stub/i;
 
+// ── WIP scoring signals ───────────────────────────────────────────────────────
+// Each returns a score; total >= WIP_SCORE_THRESHOLD → wip regardless of line count
+
+const WIP_SCORE_THRESHOLD = 5;
+
+function wipScore(text: string, ext: string): number {
+  let score = 0;
+
+  // Definitive: single hit is enough
+  if (/throw new Error\(['"`]not implemented/i.test(text)) score += 10;
+  if (/throw new Error\(['"`]todo/i.test(text))            score += 10;
+
+  // Strong: each occurrence adds weight
+  const emptyCatches = (text.match(/catch\s*(?:\([^)]*\))?\s*\{\s*\}/g) ?? []).length;
+  score += emptyCatches * 4;
+  score += (text.match(/\/\/\s*HACK\b/gi) ?? []).length * 3;
+
+  // Medium: diminishing returns
+  score += Math.min((text.match(/@ts-ignore/g) ?? []).length * 2, 6);
+
+  // Weak: only meaningful in TS, capped
+  if (ext === ".ts" || ext === ".tsx") {
+    score += Math.min((text.match(/:\s*any\b/g) ?? []).length, 4);
+  }
+  score += Math.min((text.match(/console\.(log|warn|debug)\(/g) ?? []).length, 3);
+
+  return score;
+}
+
 export interface ScanOptions {
   sourceRoot?: string;
   yamlBlocks?: YamlBlockOverride[];
@@ -358,27 +387,34 @@ function computeBlockEdges(
 
 // ── Status heuristic ──────────────────────────────────────────────────────────
 
-function heuristicStatus(files: string[], root: string): ResolvedStatus {
-  const codeFiles = files.filter((f) => CODE_EXTS.has(path.extname(f)));
+export function heuristicStatus(files: string[], root: string): ResolvedStatus {
+  const codeFiles = files.filter(
+    (f) => CODE_EXTS.has(path.extname(f)) && !f.endsWith(".d.ts")
+  );
   if (!codeFiles.length) return "planned";
 
   let totalNonBlank = 0;
   let hasTodo = false;
   let anyContent = false;
+  let totalWipScore = 0;
 
   for (const rel of codeFiles) {
     try {
       const text = fs.readFileSync(path.join(root, rel), "utf8");
+      const ext = path.extname(rel);
       if (text.trim()) anyContent = true;
       for (const line of text.split(/\r?\n/)) {
         if (line.trim()) totalNonBlank++;
       }
       if (TODO_RE.test(text)) hasTodo = true;
+      totalWipScore += wipScore(text, ext);
     } catch {}
   }
 
   if (!anyContent) return "planned";
-  if (hasTodo || totalNonBlank < STUB_LINE_THRESHOLD) return "wip";
+  if (hasTodo || totalNonBlank < STUB_LINE_THRESHOLD || totalWipScore >= WIP_SCORE_THRESHOLD) {
+    return "wip";
+  }
   return "done";
 }
 

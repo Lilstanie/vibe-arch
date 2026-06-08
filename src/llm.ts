@@ -4,7 +4,7 @@ import * as path from "path";
 
 // ── System prompt (user-defined architecture analysis) ───────────────────────
 
-const SYSTEM_PROMPT = `You are a senior software architect. Analyze THIS codebase (plus our prior context about its intended design) and produce a coarse, concept-level architecture decomposition.
+const SYSTEM_PROMPT = `You are a senior software architect. Analyze THIS codebase and produce a coarse, concept-level architecture decomposition.
 
 Group the code by RESPONSIBILITY / CONCERN, not by folder. A "block" is a meaningful module (e.g. "identity layer", "drift control", "API routing"), even if its files are spread across directories. Aim for 6 to 15 blocks total. Do not go file-by-file.
 
@@ -15,18 +15,24 @@ Rules:
 - depends_on uses block ids only.
 - Output ONLY valid YAML in the schema below. No prose, no markdown fences, no code blocks.
 
+CRITICAL — the intent field must be a precise contract, not a vague label:
+  - State WHAT it does (the concrete responsibility)
+  - State what inputs/outputs it handles if relevant
+  - State what "done" looks like for this block (e.g. "all error paths handled, typed, no TODOs")
+  - Keep it under 20 words but be specific enough that an AI can audit code against it later
+
 Output schema (block ids as map keys, NOT a list):
 
 blocks:
   scenarios:
     label: "Character Scenarios"
-    intent: "name / role / opening line for each AI character"
+    intent: "exports typed character configs (name/role/opening); done when all chars have full fields and no stubs"
     paths:
       - lib/scenarios.ts
     depends_on: []
   chat_api:
     label: "Chat API"
-    intent: "streaming Japanese character responses"
+    intent: "streams AI character responses over HTTP; done when retry, error handling, and token limits are implemented"
     paths:
       - app/api/chat/**
     depends_on:

@@ -383,6 +383,77 @@ body {
 }
 .hint b { color: var(--cyan); font-weight: 500; }
 
+/* ── Deep Check ────────────────────────────────────────── */
+.deep-btn {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--dim);
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--line2);
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  white-space: nowrap;
+}
+.deep-btn:hover:not(:disabled) {
+  background: rgba(167,139,250,.12);
+  border-color: rgba(167,139,250,.4);
+  color: #c4b5fd;
+}
+.deep-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.deep-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--line);
+  background: rgba(167,139,250,.05);
+}
+.deep-bar-fill-wrap {
+  flex: 1 1 auto;
+  height: 3px;
+  background: rgba(255,255,255,.06);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.deep-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: #a78bfa;
+  border-radius: 99px;
+  transition: width .3s ease;
+}
+#deepBarLabel {
+  font-size: 9.5px;
+  color: #a78bfa;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* AI verdict on nodes */
+.ai-tag {
+  font-size: 8px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+  flex: 0 0 auto;
+}
+.conf-high   { background: rgba(52,211,153,.2);  color: var(--green); }
+.conf-medium { background: rgba(167,139,250,.2); color: #c4b5fd; }
+.conf-low    { background: rgba(107,114,128,.2); color: var(--dim); }
+
+.missing {
+  font-size: 8.5px;
+  color: var(--amber);
+  margin-top: 2px;
+  white-space: normal;
+  line-height: 1.4;
+}
+
 /* ── Utility ───────────────────────────────────────────── */
 .hidden { display: none !important; }
 
