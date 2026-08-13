@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recruit Copilot 原型</title>
+<style>
+  :root{
+    --indigo:#4f46e5;
+    --indigo-600:#4338ca;
+    --indigo-50:#eef2ff;
+    --indigo-100:#e0e7ff;
+    --boss:#00a6a7;
+    --boss-dark:#008f90;
+    --ink:#1f2328;
+    --ink-2:#3a3f45;
+    --muted:#6b7280;
+    --muted-2:#9ca3af;
+    --line:#e5e7eb;
+    --line-2:#eef0f2;
+    --bg:#f4f5f7;
+    --panel:#ffffff;
+    --ai-bubble:#f3f4f6;
+    --radius:12px;
+    --radius-sm:8px;
+    --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.06);
+    --font: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:linear-gradient(160deg,#e9eaf0 0%,#dfe1ea 100%);
+    font-family:var(--font);
+    color:var(--ink);
+    font-size:13px;
+    line-height:1.5;
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:36px 20px 60px;
+  }
+
+  /* ===== Chrome window ===== */
+  .window{
+    width:1280px;
+    max-width:100%;
+    background:var(--panel);
+    border-radius:14px;
+    box-shadow:0 20px 60px rgba(20,20,50,.28),0 4px 12px rgba(0,0,0,.12);
+    overflow:hidden;
+  }
+  .chrome-top{
+    height:44px;
+    background:linear-gradient(#f6f6f7,#e9e9eb);
+    border-bottom:1px solid #d8d9dc;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:0 16px;
+  }
+  .traffic{display:flex;gap:8px;}
+  .dot{width:12px;height:12px;border-radius:50%;}
+  .dot.r{background:#ff5f57;}
+  .dot.y{background:#febc2e;}
+  .dot.g{background:#28c840;}
+  .addr{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    height:28px;
+    background:#fff;
+    border:1px solid #dcdde0;
+    border-radius:14px;
+    padding:0 12px;
+    color:#4b5563;
+    font-size:12.5px;
+    max-width:640px;
+  }
+  .addr .lock{color:#9aa0a6;font-size:11px;}
+  .addr .u1{color:#6b7280;}
+  .addr .u2{color:#111;}
+  .chrome-actions{display:flex;gap:14px;color:#8a8f98;font-size:15px;}
+
+  /* ===== Body split ===== */
+  .browser-body{display:flex;height:768px;background:#f0f2f5;}
+  .boss{flex:1;overflow-y:auto;background:#f0f2f5;}
+  .sidebar{
+    width:410px;
+    flex:none;
+    background:#fbfbfc;
+    border-left:1px solid #e3e4e8;
+    display:flex;
+    flex-direction:column;
+    box-shadow:-8px 0 24px rgba(0,0,0,.05);
+  }
+
+  /* scrollbars */
+  .boss::-webkit-scrollbar,.chat::-webkit-scrollbar,.entry-body::-webkit-scrollbar{width:8px;}
+  .boss::-webkit-scrollbar-thumb,.chat::-webkit-scrollbar-thumb,.entry-body::-webkit-scrollbar-thumb{background:#d3d5da;border-radius:8px;}
+  .boss::-webkit-scrollbar-track,.chat::-webkit-scrollbar-track{background:transparent;}
+
+  /* ===== Boss zhipin page ===== */
+  .boss-nav{
+    height:52px;background:#fff;border-bottom:1px solid #ececec;
+    display:flex;align-items:center;gap:22px;padding:0 28px;position:sticky;top:0;z-index:5;
+  }
+  .boss-logo{font-weight:800;color:var(--boss);font-size:18px;letter-spacing:-.3px;display:flex;align-items:center;gap:6px;}
+  .boss-logo .mk{background:var(--boss);color:#fff;border-radius:6px;padding:1px 6px;font-size:13px;}
+  .boss-nav .nl{color:#5a5f66;font-size:13.5px;}
+  .boss-nav .nl.active{color:var(--boss);font-weight:600;}
+  .boss-nav .spacer{flex:1;}
+  .boss-nav .avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#00a6a7,#4dd0c9);}
+
+  .boss-content{padding:22px 28px 40px;}
+  .cand-card{
+    background:#fff;border-radius:12px;padding:22px 24px;box-shadow:0 1px 3px rgba(0,0,0,.05);
+  }
+  .cand-head{display:flex;gap:18px;align-items:flex-start;}
+  .cand-avatar{
+    width:64px;height:64px;border-radius:14px;flex:none;
+    background:linear-gradient(135deg,#3b82f6,#6366f1);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;
+  }
+  .cand-main{flex:1;}
+  .cand-name-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .cand-name{font-size:20px;font-weight:700;color:#1f2328;}
+  .cand-badge{background:#e6f7f7;color:#008f90;font-size:11.5px;padding:2px 8px;border-radius:6px;font-weight:600;}
+  .cand-badge.active{background:#e8f9ef;color:#12a150;}
+  .cand-meta{color:#6b7280;font-size:13px;margin-top:7px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .cand-meta .sep{color:#d1d5db;}
+  .cand-expect{
+    margin-top:14px;background:#f7fafa;border:1px solid #e3f0f0;border-radius:8px;
+    padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:13px;
+  }
+  .cand-expect .lbl{color:#8a9ba0;font-size:12px;}
+  .cand-expect .val{color:#1f2328;font-weight:600;}
+  .cand-expect .sal{color:var(--boss);font-weight:700;}
+
+  .boss-actions{display:flex;gap:10px;margin-top:16px;}
+  .boss-btn{
+    border:none;border-radius:8px;padding:9px 20px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;
+  }
+  .boss-btn.primary{background:var(--boss);color:#fff;}
+  .boss-btn.primary:hover{background:var(--boss-dark);}
+  .boss-btn.ghost{background:#fff;color:#5a5f66;border:1px solid #dcdfe3;}
+
+  .sec{background:#fff;border-radius:12px;padding:20px 24px;margin-top:16px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+  .sec-title{font-size:15px;font-weight:700;color:#1f2328;margin:0 0 14px;display:flex;align-items:center;gap:8px;}
+  .sec-title::before{content:"";width:3px;height:14px;background:var(--boss);border-radius:2px;}
+  .skills{display:flex;flex-wrap:wrap;gap:8px;}
+  .skill{background:#f2f4f6;color:#4b5563;font-size:12.5px;padding:5px 12px;border-radius:16px;}
+  .skill.hot{background:#e6f7f7;color:#008f90;font-weight:600;}
+
+  .exp{display:flex;gap:14px;padding:14px 0;border-top:1px solid #f0f1f3;}
+  .exp:first-of-type{border-top:none;padding-top:2px;}
+  .exp-logo{width:40px;height:40px;border-radius:9px;flex:none;background:#eef1f4;display:flex;align-items:center;justify-content:center;font-size:18px;}
+  .exp-body{flex:1;}
+  .exp-co{font-weight:600;font-size:14px;color:#1f2328;display:flex;justify-content:space-between;align-items:baseline;}
+  .exp-co .time{font-size:12px;color:#9ca3af;font-weight:400;}
+  .exp-role{color:#6b7280;font-size:12.5px;margin:3px 0 8px;}
+  .exp-body ul{margin:0;padding-left:18px;color:#4b5563;font-size:12.8px;}
+  .exp-body li{margin:4px 0;}
+  .exp-body li b{color:#1f2328;}
+  .hl{background:linear-gradient(transparent 62%,#ffe7a8 62%);font-weight:600;color:#1f2328;padding:0 1px;}
+
+  .boss-chatbar{
+    position:sticky;bottom:0;background:#fff;border-top:1px solid #ececec;
+    padding:12px 28px;display:flex;gap:10px;align-items:center;margin:16px -28px -40px;
+  }
+  .boss-chatbar input{
+    flex:1;height:38px;border:1px solid #dcdfe3;border-radius:8px;padding:0 14px;font-size:13px;font-family:inherit;outline:none;
+  }
+  .boss-chatbar input:focus{border-color:var(--boss);}
+  .boss-chatbar .send{background:var(--boss);color:#fff;border:none;border-radius:8px;padding:0 22px;height:38px;font-weight:600;cursor:pointer;font-family:inherit;}
+
+  /* ===== Sidebar header ===== */
+  .sb-header{
+    padding:12px 16px 0;background:#fff;border-bottom:1px solid var(--line);flex:none;
+  }
+  .brand{display:flex;align-items:center;gap:9px;padding-bottom:12px;}
+  .brand .icon{
+    width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#7c74f0);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;
+  }
+  .brand .name{font-weight:700;font-size:15px;color:#1f2328;letter-spacing:-.2px;}
+  .brand .name small{display:block;font-weight:400;font-size:10.5px;color:var(--muted-2);letter-spacing:.3px;}
+  .brand .spacer{flex:1;}
+  .brand .cog{color:var(--muted-2);font-size:15px;cursor:pointer;}
+  .tabs{display:flex;gap:4px;}
+  .tab{
+    flex:1;text-align:center;padding:10px 0;font-size:13.5px;font-weight:600;color:var(--muted);
+    cursor:pointer;border-bottom:2px solid transparent;transition:.15s;
+  }
+  .tab.active{color:var(--indigo);border-bottom-color:var(--indigo);}
+  .tab:hover:not(.active){color:var(--ink-2);}
+
+  .pane{flex:1;min-height:0;display:none;flex-direction:column;}
+  .pane.active{display:flex;}
+
+  /* ===== Chat toolbar ===== */
+  .chat-toolbar{padding:12px 14px 10px;background:#fff;border-bottom:1px solid var(--line-2);flex:none;}
+  .cand-select-row{display:flex;gap:8px;align-items:center;}
+  .select-wrap{position:relative;flex:1;}
+  .cand-select{
+    width:100%;appearance:none;background:#f7f7f9;border:1px solid var(--line);border-radius:8px;
+    padding:8px 30px 8px 12px;font-size:13px;font-weight:600;color:#1f2328;cursor:pointer;font-family:inherit;outline:none;
+  }
+  .cand-select:focus{border-color:var(--indigo);}
+  .select-wrap::after{content:"▾";position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--muted-2);pointer-events:none;font-size:11px;}
+  .new-session{
+    flex:none;background:var(--indigo-50);color:var(--indigo);border:1px solid var(--indigo-100);
+    border-radius:8px;padding:8px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;
+  }
+  .new-session:hover{background:var(--indigo-100);}
+
+  .badges{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+  .badge{
+    display:inline-flex;align-items:center;gap:4px;background:#f2f3f5;color:#5b616b;
+    font-size:11px;padding:3px 9px;border-radius:14px;font-weight:500;
+  }
+  .badge.ok{background:#eef2ff;color:#4f46e5;}
+  .badge.rule{background:#ecfdf5;color:#059669;}
+
+  .ctx-wrap{margin-top:11px;}
+  .ctx-labels{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted-2);margin-bottom:4px;}
+  .ctx-labels .pct{font-weight:600;}
+  .ctx-bar{height:5px;background:#edeef1;border-radius:4px;overflow:hidden;}
+  .ctx-fill{height:100%;width:16%;background:var(--indigo);border-radius:4px;transition:width .5s ease,background .3s;}
+  .ctx-fill.warn{background:#f59e0b;}
+  .ctx-hint{font-size:10.5px;color:#d97706;margin-top:5px;display:none;align-items:center;gap:4px;}
+  .ctx-hint.show{display:flex;}
+  .ctx-hint a{color:var(--indigo);font-weight:600;cursor:pointer;text-decoration:none;margin-left:auto;}
+
+  /* ===== Quick chips ===== */
+  .chips{display:flex;gap:7px;padding:11px 14px;background:#fff;border-bottom:1px solid var(--line-2);flex:none;overflow-x:auto;}
+  .chips::-webkit-scrollbar{height:0;}
+  .chip{
+    flex:none;background:#fff;border:1px solid var(--line);color:#4b5563;border-radius:16px;
+    padding:6px 12px;font-size:12px;font-weight:500;cursor:pointer;transition:.15s;white-space:nowrap;
+  }
+  .chip:hover{border-color:var(--indigo);color:var(--indigo);background:var(--indigo-50);}
+  .chip:active{transform:scale(.96);}
+
+  /* ===== Chat area ===== */
+  .chat{flex:1;min-height:0;overflow-y:auto;padding:16px 14px 8px;background:#fbfbfc;display:flex;flex-direction:column;gap:14px;}
+  .divider{display:flex;align-items:center;gap:10px;color:var(--muted-2);font-size:11px;margin:2px 0;}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  .msg{display:flex;flex-direction:column;max-width:86%;animation:pop .25s ease;}
+  @keyframes pop{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .msg.ai{align-self:flex-start;align-items:flex-start;}
+  .msg.user{align-self:flex-end;align-items:flex-end;}
+  .bubble{padding:10px 13px;font-size:13px;line-height:1.6;border-radius:12px;}
+  .msg.ai .bubble{background:var(--ai-bubble);color:#1f2328;border-top-left-radius:3px;}
+  .msg.user .bubble{background:var(--indigo);color:#fff;border-top-right-radius:3px;}
+  .bubble b{font-weight:700;}
+  .bubble .score{color:var(--indigo);font-weight:700;}
+  .msg.user .bubble .score{color:#fff;}
+  .bubble ul{margin:6px 0 2px;padding-left:17px;}
+  .bubble li{margin:3px 0;}
+  .bubble .tag-red{color:#dc2626;font-weight:600;}
+  .bubble .tag-green{color:#059669;font-weight:600;}
+
+  .msg-actions{display:flex;gap:6px;margin-top:6px;padding-left:2px;}
+  .act-btn{
+    background:#fff;border:1px solid var(--line);color:#6b7280;border-radius:7px;
+    padding:4px 10px;font-size:11px;font-weight:500;cursor:pointer;transition:.15s;font-family:inherit;
+  }
+  .act-btn:hover{border-color:var(--indigo);color:var(--indigo);background:var(--indigo-50);}
+  .act-btn.star:hover{border-color:#d97706;color:#d97706;background:#fffbeb;}
+
+  .typing{display:flex;gap:4px;align-items:center;padding:12px 14px;}
+  .typing span{width:6px;height:6px;border-radius:50%;background:#c3c6cc;animation:blink 1.2s infinite;}
+  .typing span:nth-child(2){animation-delay:.2s;}
+  .typing span:nth-child(3){animation-delay:.4s;}
+  @keyframes blink{0%,60%,100%{opacity:.3;transform:translateY(0);}30%{opacity:1;transform:translateY(-3px);}}
+
+  /* ===== Input ===== */
+  .composer{padding:10px 12px;background:#fff;border-top:1px solid var(--line);flex:none;}
+  .composer-inner{display:flex;gap:8px;align-items:flex-end;background:#f7f7f9;border:1px solid var(--line);border-radius:12px;padding:6px 6px 6px 12px;transition:.15s;}
+  .composer-inner:focus-within{border-color:var(--indigo);background:#fff;}
+  .composer textarea{
+    flex:1;border:none;background:transparent;resize:none;outline:none;font-family:inherit;font-size:13px;
+    line-height:1.5;max-height:96px;padding:5px 0;color:#1f2328;
+  }
+  .send-btn{
+    flex:none;width:34px;height:34px;border-radius:9px;border:none;background:var(--indigo);color:#fff;
+    cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:.15s;
+  }
+  .send-btn:hover{background:var(--indigo-600);}
+  .send-btn:disabled{background:#c7c9d1;cursor:default;}
+
+  /* ===== Entry tab ===== */
+  .entry-body{flex:1;overflow-y:auto;padding:16px 16px 24px;}
+  .dropzone{
+    border:2px dashed #cdd0d6;border-radius:12px;padding:34px 18px;text-align:center;
+    background:#fafafb;cursor:pointer;transition:.18s;color:#6b7280;
+  }
+  .dropzone:hover,.dropzone.drag{border-color:var(--indigo);background:var(--indigo-50);color:var(--indigo);}
+  .dropzone .big{font-size:30px;margin-bottom:8px;}
+  .dropzone .t{font-size:13px;font-weight:600;color:#3a3f45;}
+  .dropzone:hover .t{color:var(--indigo);}
+  .dropzone .s{font-size:11.5px;color:var(--muted-2);margin-top:4px;}
+  .dropzone kbd{background:#eceef1;border:1px solid #d9dbe0;border-radius:4px;padding:0 5px;font-size:11px;font-family:ui-monospace,monospace;color:#4b5563;}
+
+  .entry-btns{display:flex;gap:8px;margin-top:12px;}
+  .entry-btns button{
+    flex:1;border-radius:9px;padding:10px;font-size:12.8px;font-weight:600;cursor:pointer;font-family:inherit;
+    display:flex;align-items:center;justify-content:center;gap:6px;transition:.15s;
+  }
+  .btn-cap{background:#fff;border:1px solid var(--line);color:#4b5563;}
+  .btn-cap:hover{border-color:var(--indigo);color:var(--indigo);}
+  .btn-extract{background:var(--indigo);border:1px solid var(--indigo);color:#fff;}
+  .btn-extract:hover{background:var(--indigo-600);}
+
+  .extract-status{display:none;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;background:var(--indigo-50);border-radius:8px;color:var(--indigo);font-size:12.5px;font-weight:500;}
+  .extract-status.show{display:flex;}
+  .extract-status .spin{width:14px;height:14px;border:2px solid var(--indigo-100);border-top-color:var(--indigo);border-radius:50%;animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .form-card{display:none;margin-top:16px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;animation:pop .3s ease;}
+  .form-card.show{display:block;}
+  .form-card .fc-head{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:#1f2328;margin-bottom:14px;}
+  .form-card .fc-head .pill{margin-left:auto;background:#ecfdf5;color:#059669;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:10px;}
+  .field{margin-bottom:11px;}
+  .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:500;}
+  .field input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;font-family:inherit;color:#1f2328;outline:none;transition:.15s;}
+  .field input:focus{border-color:var(--indigo);}
+  .field.row2{display:flex;gap:10px;}
+  .field.row2 .col{flex:1;}
+  .confirm-btn{
+    width:100%;margin-top:6px;background:var(--indigo);color:#fff;border:none;border-radius:9px;
+    padding:11px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;transition:.15s;
+  }
+  .confirm-btn:hover{background:var(--indigo-600);}
+
+  /* ===== Toast ===== */
+  .toast-wrap{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
+  .toast{
+    background:#1f2328;color:#fff;font-size:12.8px;padding:10px 16px;border-radius:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;align-items:center;gap:8px;
+    animation:toastIn .3s ease;font-weight:500;
+  }
+  .toast .ic{width:18px;height:18px;border-radius:50%;background:#22c55e;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;flex:none;}
+  .toast .ic.feishu{background:#3370ff;font-size:10px;}
+  @keyframes toastIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+  .toast.out{animation:toastOut .3s ease forwards;}
+  @keyframes toastOut{to{opacity:0;transform:translateY(8px);}}
+</style>
+</head>
+<body>
+<div class="window">
+  <!-- Chrome chrome -->
+  <div class="chrome-top">
+    <div class="traffic"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+    <div class="addr">
+      <span class="lock">🔒</span>
+      <span><span class="u2">www.zhipin.com</span><span class="u1">/web/geek/recommend?candidate=zhangwei</span></span>
+    </div>
+    <div class="chrome-actions"><span>⋮</span></div>
+  </div>
+
+  <div class="browser-body">
+    <!-- ============ BOSS ZHIPIN PAGE ============ -->
+    <div class="boss">
+      <div class="boss-nav">
+        <div class="boss-logo"><span class="mk">B</span>BOSS直聘</div>
+        <span class="nl">首页</span>
+        <span class="nl active">推荐牛人</span>
+        <span class="nl">沟通</span>
+        <span class="nl">职位管理</span>
+        <div class="spacer"></div>
+        <div class="avatar"></div>
+      </div>
+
+      <div class="boss-content">
+        <div class="cand-card">
+          <div class="cand-head">
+            <div class="cand-avatar">张</div>
+            <div class="cand-main">
+              <div class="cand-name-row">
+                <span class="cand-name">张伟</span>
+                <span class="cand-badge active">在线</span>
+                <span class="cand-badge">离职-随时到岗</span>
+              </div>
+              <div class="cand-meta">
+                <span>男</span><span class="sep">·</span>
+                <span>32岁</span><span class="sep">·</span>
+                <span>7年经验</span><span class="sep">·</span>
+                <span>本科</span><span class="sep">·</span>
+                <span>华东师范大学</span><span class="sep">·</span>
+                <span>计算机科学与技术</span>
+              </div>
+              <div class="cand-expect">
+                <span class="lbl">期望</span>
+                <span class="val">上海</span><span class="sep">·</span>
+                <span class="val">后端开发工程师</span><span class="sep">·</span>
+                <span class="sal">35-45K</span>
+              </div>
+            </div>
+          </div>
+          <div class="boss-actions">
+            <button class="boss-btn primary">立即沟通</button>
+            <button class="boss-btn ghost">☆ 收藏</button>
+            <button class="boss-btn ghost">下载简历</button>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-title">技能标签</div>
+          <div class="skills">
+            <span class="skill hot">Java</span>
+            <span class="skill hot">分布式</span>
+            <span class="skill hot">高并发</span>
+            <span class="skill">Spring Cloud</span>
+            <span class="skill">MySQL</span>
+            <span class="skill">Redis</span>
+            <span class="skill">RocketMQ</span>
+            <span class="skill">微服务</span>
+            <span class="skill">Docker</span>
+            <span class="skill">K8s</span>
+            <span class="skill">MyBatis</span>
+            <span class="skill">Elasticsearch</span>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-title">工作经历</div>
+          <div class="exp">
+            <div class="exp-logo">🛒</div>
+            <div class="exp-body">
+              <div class="exp-co">某电商科技（上海）有限公司 <span class="time">2021.03 - 至今</span></div>
+              <div class="exp-role">高级后端开发工程师 · 交易中台组</div>
+              <ul>
+                <li>主导<b>订单系统重构</b>，通过分库分表 + 异步化改造，<span class="hl">QPS 从 2k 提升至 12k</span>，大促期间零故障。</li>
+                <li>设计基于 RocketMQ 的最终一致性方案，将订单超时取消延迟从分钟级降至秒级。</li>
+                <li>带 5 人小组，负责交易域核心链路的稳定性与性能优化。</li>
+              </ul>
+            </div>
+          </div>
+          <div class="exp">
+            <div class="exp-logo">💳</div>
+            <div class="exp-body">
+              <div class="exp-co">某互联网金融公司 <span class="time">2017.07 - 2021.02</span></div>
+              <div class="exp-role">后端开发工程师 · 支付平台</div>
+              <ul>
+                <li>参与支付网关从单体到微服务的拆分，<span class="hl">日均处理交易 800w 笔</span>，成功率 99.99%。</li>
+                <li>负责对账系统开发，将 T+1 对账耗时从 4 小时优化至 40 分钟。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="boss-chatbar">
+          <input placeholder="给张伟发条消息，开启沟通…" />
+          <button class="send">发送</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SIDEBAR EXTENSION ============ -->
+    <div class="sidebar">
+      <div class="sb-header">
+        <div class="brand">
+          <div class="icon">R</div>
+          <div class="name">Recruit Copilot<small>猎头 AI 助手</small></div>
+          <div class="spacer"></div>
+          <div class="cog">⚙</div>
+        </div>
+        <div class="tabs">
+          <div class="tab" data-tab="entry">录入</div>
+          <div class="tab active" data-tab="chat">对话</div>
+        </div>
+      </div>
+
+      <!-- ===== CHAT PANE ===== -->
+      <div class="pane active" id="pane-chat">
+        <div class="chat-toolbar">
+          <div class="cand-select-row">
+            <div class="select-wrap">
+              <select class="cand-select" id="candSelect">
+                <option value="zhangwei">张伟 · 高级后端</option>
+                <option value="lina">李娜 · 产品经理</option>
+                <option value="jd">JD · 字节-资深前端</option>
+              </select>
+            </div>
+            <button class="new-session" id="newSessionBtn">＋ 新会话</button>
+          </div>
+
+          <div class="badges" id="badges">
+            <span class="badge ok">📄 档案已载入</span>
+            <span class="badge rule">📘 用人规则 v3</span>
+            <span class="badge" id="roundBadge">🕐 第 1 轮</span>
+          </div>
+
+          <div class="ctx-wrap">
+            <div class="ctx-labels">
+              <span>上下文占用</span>
+              <span class="pct" id="ctxPct">16%</span>
+            </div>
+            <div class="ctx-bar"><div class="ctx-fill" id="ctxFill"></div></div>
+            <div class="ctx-hint" id="ctxHint">
+              ⚠ 上下文较长，可能影响判断准确度
+              <a id="ctxNewLink">开启新会话 ↺</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="chips" id="chips">
+          <button class="chip" data-q="match">🎯 匹配分析</button>
+          <button class="chip" data-q="redline">🚩 红线检查</button>
+          <button class="chip" data-q="opener">💬 开场白</button>
+          <button class="chip" data-q="decide">⚖️ 约不约</button>
+        </div>
+
+        <div class="chat" id="chat"></div>
+
+        <div class="composer">
+          <div class="composer-inner">
+            <textarea id="input" rows="1" placeholder="问点关于这位候选人的问题…"></textarea>
+            <button class="send-btn" id="sendBtn">➤</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ENTRY PANE ===== -->
+      <div class="pane" id="pane-entry">
+        <div class="entry-body">
+          <div class="dropzone" id="dropzone">
+            <div class="big">🗂️</div>
+            <div class="t">拖入截图 / 简历文件</div>
+            <div class="s">或按 <kbd>Ctrl</kbd> + <kbd>V</kbd> 粘贴剪贴板内容</div>
+          </div>
+          <div class="entry-btns">
+            <button class="btn-cap" id="captureBtn">📷 截取当前页面</button>
+            <button class="btn-extract" id="aiExtractBtn">✨ AI 提取信息</button>
+          </div>
+
+          <div class="extract-status" id="extractStatus">
+            <span class="spin"></span> AI 正在识别页面与简历内容…
+          </div>
+
+          <div class="form-card" id="formCard">
+            <div class="fc-head">✅ 提取结果确认 <span class="pill">置信度 94%</span></div>
+            <div class="field">
+              <label>姓名</label>
+              <input value="张伟" />
+            </div>
+            <div class="field row2">
+              <div class="col"><label>手机号</label><input value="138****6021" /></div>
+              <div class="col"><label>年龄</label><input value="32岁" /></div>
+            </div>
+            <div class="field">
+              <label>当前公司 / 职位</label>
+              <input value="某电商科技（上海）· 高级后端开发工程师" />
+            </div>
+            <div class="field row2">
+              <div class="col"><label>工作年限</label><input value="7年" /></div>
+              <div class="col"><label>学历</label><input value="本科" /></div>
+            </div>
+            <div class="field">
+              <label>期望薪资</label>
+              <input value="35-45K · 上海" />
+            </div>
+            <div class="field">
+              <label>核心技能</label>
+              <input value="Java / 分布式 / 高并发 / RocketMQ" />
+            </div>
+            <button class="confirm-btn" id="confirmBtn">✓ 确认入库到飞书</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Data ----------
+  var CAND = {
+    zhangwei: {
+      name: "张伟", role: "高级后端", noun:"张伟",
+      welcome: "你好 Jay 👋 已载入 <b>张伟</b> 的档案（32岁 / 7年 / 本科，期望上海·后端·35-45K）。<br>已同步「后端用人规则 v3」。需要我做匹配分析、红线检查，还是拟一句开场白？",
+      replies: {
+        match: {
+          q: "帮我分析下张伟和这个 JD 的匹配度",
+          a: "对照「资深后端 JD」的匹配分析如下：<br><br><b>综合匹配度 <span class=\"score\">78%</span></b>（建议沟通）<ul><li><span class=\"tag-green\">✓ 强项</span>：Java + 分布式 + 高并发经验扎实，订单系统 <b>QPS 2k→12k</b> 是硬核量化亮点，正好命中 JD 的「高并发交易系统」要求。</li><li><span class=\"tag-green\">✓ 匹配</span>：7 年经验、带过 5 人小组，符合 JD 期望的中高级梯队。</li><li><span class=\"tag-red\">✗ 待确认</span>：JD 明确要求 <b>Kafka</b>，简历只体现 RocketMQ；消息中间件思路相通但需面试验证深度。</li></ul>薪资 35-45K 落在 JD 预算区间内，无明显 gap。"
+        },
+        redline: {
+          q: "按用人规则 v3 帮我做红线检查",
+          a: "已按「用人规则 v3」逐条核对红线项：<ul><li><span class=\"tag-green\">✓</span> 稳定性：两段经历分别 4 年 / 3.5 年，无频繁跳槽 <span class=\"tag-green\">通过</span></li><li><span class=\"tag-green\">✓</span> 学历：本科统招，达标 <span class=\"tag-green\">通过</span></li><li><span class=\"tag-green\">✓</span> 年龄：32 岁，在 35 岁红线内 <span class=\"tag-green\">通过</span></li><li><span class=\"tag-red\">⚠</span> 待核实：现公司在职，需确认离职时间与竞业协议</li></ul><b>结论：无硬性红线，可推进。</b>建议面试时补充确认竞业限制情况。"
+        },
+        opener: {
+          q: "帮我写一句打招呼的开场白",
+          a: "结合他的亮点，给你两版开场白，可直接复制到 Boss：<br><br><b>版本 A（技术共鸣）</b><br>「张伟你好，看到你主导订单系统重构把 QPS 从 2k 做到 12k，非常亮眼。我们正在招资深后端负责交易中台的高并发场景，方向很契合，方便聊两句吗？」<br><br><b>版本 B（简洁直接）</b><br>「你好张伟，你的分布式 + 高并发背景和我们的岗位很匹配，薪资范围也覆盖你的期望，想约个时间深入聊聊，你看合适吗？」"
+        },
+        decide: {
+          q: "综合看，这个人约不约面？",
+          a: "<b>我的建议：<span class=\"tag-green\">约面</span> ⚖️</b><br><br>理由：匹配度 78% 且无硬红线，量化战绩过硬，薪资对齐，属于「值得投入一轮面试」的候选人。<br><br>唯一变量是 <b>Kafka 深度</b>与<b>离职时间</b>——这两点放到电话初面 15 分钟即可摸清，不必因此放弃。<br><br>下一步：我可以帮你生成一份面试提纲，重点考察消息中间件选型思路与高并发实战细节。要吗？"
+        },
+        generic: {
+          a: "基于张伟的档案，我的判断是：他的核心竞争力在于<b>高并发交易系统</b>的实战经验（订单 QPS 2k→12k、支付日均 800w 笔），这类量化战绩在后端候选人里稀缺度较高。需要我针对某个具体维度（技术深度 / 稳定性 / 薪资谈判）再展开吗？"
+        }
+      }
+    },
+    lina: {
+      name:"李娜", role:"产品经理", noun:"李娜",
+      welcome:"已切换到 <b>李娜</b> 的档案（产品经理方向）👋 这是一个全新会话，之前张伟的上下文已清空，不会互相干扰。需要我先做匹配分析吗？",
+      replies:{
+        generic:{a:"针对李娜（产品经理）的初步判断：她的经历偏向 C 端增长类产品。如果目标 JD 是<b>后端/技术岗</b>，方向不太匹配；若是产品岗，我可以进一步拉取她的项目数据做深度分析。要切到哪个 JD 对比？"}
+      }
+    },
+    jd:{
+      name:"JD·资深前端", role:"字节-资深前端", noun:"这个 JD",
+      welcome:"已载入 <b>字节·资深前端 JD</b> 📘 新会话已开启。你可以让我用这份 JD 去匹配任意候选人，或者提炼这份 JD 的核心硬性要求。",
+      replies:{
+        generic:{a:"这份「字节·资深前端 JD」的核心硬性要求我已解析：<ul><li>5 年以上前端，精通 React / TypeScript</li><li>有大型 C 端项目性能优化经验</li><li>了解 Node.js 全栈 / 工程化体系</li></ul>把候选人拖进来或在下拉里选一位，我就能算匹配度。</li></ul>"}
+      }
+    }
+  };
+
+  // ---------- State ----------
+  var state = { cand:"zhangwei", round:1, ctx:16, usedChips:{} };
+
+  // ---------- Refs ----------
+  var chat = document.getElementById("chat");
+  var input = document.getElementById("input");
+  var sendBtn = document.getElementById("sendBtn");
+  var candSelect = document.getElementById("candSelect");
+  var ctxFill = document.getElementById("ctxFill");
+  var ctxPct = document.getElementById("ctxPct");
+  var ctxHint = document.getElementById("ctxHint");
+  var roundBadge = document.getElementById("roundBadge");
+  var toastWrap = document.getElementById("toastWrap");
+
+  // ---------- Helpers ----------
+  function scrollBottom(){ chat.scrollTop = chat.scrollHeight; }
+
+  function updateCtx(delta){
+    if(delta){ state.ctx = Math.min(100, state.ctx + delta); }
+    ctxFill.style.width = state.ctx + "%";
+    ctxPct.textContent = Math.round(state.ctx) + "%";
+    if(state.ctx > 60){
+      ctxFill.classList.add("warn");
+      ctxHint.classList.add("show");
+    } else {
+      ctxFill.classList.remove("warn");
+      ctxHint.classList.remove("show");
+    }
+  }
+
+  function setRound(n){
+    state.round = n;
+    roundBadge.textContent = "🕐 第 " + n + " 轮";
+  }
+
+  function addAI(html, withActions){
+    var msg = document.createElement("div");
+    msg.className = "msg ai";
+    var b = document.createElement("div");
+    b.className = "bubble";
+    b.innerHTML = html;
+    msg.appendChild(b);
+    if(withActions){
+      var acts = document.createElement("div");
+      acts.className = "msg-actions";
+      var w = document.createElement("button");
+      w.className = "act-btn";
+      w.innerHTML = "✍ 写入记录";
+      w.addEventListener("click", function(){
+        toast("已把结论追加到「"+CAND[state.cand].name+"」的备注 ✓", "feishu");
+      });
+      var s = document.createElement("button");
+      s.className = "act-btn star";
+      s.innerHTML = "★ 存为规则";
+      s.addEventListener("click", function(){
+        toast("已存为用人规则，团队成员即可复用 ★", "feishu");
+      });
+      acts.appendChild(w); acts.appendChild(s);
+      msg.appendChild(acts);
+    }
+    chat.appendChild(msg);
+    scrollBottom();
+    return msg;
+  }
+
+  function addUser(text){
+    var msg = document.createElement("div");
+    msg.className = "msg user";
+    var b = document.createElement("div");
+    b.className = "bubble";
+    b.textContent = text;
+    msg.appendChild(b);
+    chat.appendChild(msg);
+    scrollBottom();
+  }
+
+  function addDivider(text){
+    var d = document.createElement("div");
+    d.className = "divider";
+    d.innerHTML = "<span>"+text+"</span>";
+    chat.appendChild(d);
+    scrollBottom();
+  }
+
+  function showTyping(){
+    var t = document.createElement("div");
+    t.className = "msg ai";
+    t.id = "typing-msg";
+    t.innerHTML = '<div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
+    chat.appendChild(t);
+    scrollBottom();
+    return t;
+  }
+
+  function toast(text, kind){
+    var el = document.createElement("div");
+    el.className = "toast";
+    var ic = kind === "feishu"
+      ? '<span class="ic feishu">飞</span>'
+      : '<span class="ic">✓</span>';
+    el.innerHTML = ic + "<span>"+text+"</span>";
+    toastWrap.appendChild(el);
+    setTimeout(function(){
+      el.classList.add("out");
+      setTimeout(function(){ el.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ---------- Reply logic ----------
+  function replyFor(qKey){
+    var data = CAND[state.cand];
+    var r = data.replies || {};
+    if(qKey && r[qKey]) return r[qKey].a;
+    return (r.generic && r.generic.a) || "收到，我看看这位候选人的资料。";
+  }
+
+  function respond(qKey){
+    var typing = showTyping();
+    setTimeout(function(){
+      typing.remove();
+      addAI(replyFor(qKey), true);
+      setRound(state.round + 1);
+      updateCtx(8 + Math.floor(Math.random()*3)); // +8~10%
+    }, 950 + Math.random()*400);
+  }
+
+  // ---------- Send flows ----------
+  function sendFreeText(){
+    var v = input.value.trim();
+    if(!v) return;
+    addUser(v);
+    input.value = "";
+    input.style.height = "auto";
+    // naive keyword routing on zhangwei
+    var key = null;
+    if(state.cand === "zhangwei"){
+      if(/匹配|match/i.test(v)) key="match";
+      else if(/红线|风险|规则/.test(v)) key="redline";
+      else if(/开场|打招呼|招呼/.test(v)) key="opener";
+      else if(/约|面试|要不要/.test(v)) key="decide";
+    }
+    respond(key);
+  }
+
+  function sendChip(qKey){
+    var data = CAND[state.cand];
+    var r = data.replies || {};
+    var qText = (r[qKey] && r[qKey].q) || ({
+      match:"帮我做匹配度分析", redline:"帮我做红线检查",
+      opener:"帮我写个开场白", decide:"这个人约不约面？"
+    })[qKey];
+    addUser(qText);
+    respond(r[qKey] ? qKey : null);
+  }
+
+  // ---------- Session / candidate switching ----------
+  function loadWelcome(){
+    chat.innerHTML = "";
+    addAI(CAND[state.cand].welcome, false);
+  }
+
+  function switchCandidate(val){
+    state.cand = val;
+    setRound(1);
+    state.ctx = 16;
+    updateCtx(0);
+    chat.innerHTML = "";
+    addDivider("已切换对象，自动开启新会话");
+    setTimeout(function(){
+      addAI(CAND[state.cand].welcome, false);
+    }, 250);
+  }
+
+  function newSession(){
+    setRound(1);
+    state.ctx = 16;
+    updateCtx(0);
+    chat.innerHTML = "";
+    addDivider("已开启新会话，上下文已重置");
+    setTimeout(function(){
+      addAI(CAND[state.cand].welcome, false);
+    }, 200);
+    toast("新会话已开启，上下文已清空 ✓");
+  }
+
+  // ---------- Wire up ----------
+  sendBtn.addEventListener("click", sendFreeText);
+  input.addEventListener("keydown", function(e){
+    if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); sendFreeText(); }
+  });
+  input.addEventListener("input", function(){
+    input.style.height = "auto";
+    input.style.height = Math.min(96, input.scrollHeight) + "px";
+  });
+
+  document.getElementById("chips").addEventListener("click", function(e){
+    var chip = e.target.closest(".chip");
+    if(!chip) return;
+    sendChip(chip.getAttribute("data-q"));
+  });
+
+  candSelect.addEventListener("change", function(){ switchCandidate(candSelect.value); });
+  document.getElementById("newSessionBtn").addEventListener("click", newSession);
+  document.getElementById("ctxNewLink").addEventListener("click", newSession);
+
+  // Tabs
+  var tabs = document.querySelectorAll(".tab");
+  tabs.forEach(function(t){
+    t.addEventListener("click", function(){
+      tabs.forEach(function(x){ x.classList.remove("active"); });
+      t.classList.add("active");
+      var target = t.getAttribute("data-tab");
+      document.getElementById("pane-chat").classList.toggle("active", target==="chat");
+      document.getElementById("pane-entry").classList.toggle("active", target==="entry");
+    });
+  });
+
+  // ---------- Entry tab ----------
+  var dropzone = document.getElementById("dropzone");
+  var extractStatus = document.getElementById("extractStatus");
+  var formCard = document.getElementById("formCard");
+
+  function runExtract(){
+    formCard.classList.remove("show");
+    extractStatus.classList.add("show");
+    setTimeout(function(){
+      extractStatus.classList.remove("show");
+      formCard.classList.add("show");
+      toast("AI 已提取候选人信息，请确认 ✓");
+    }, 1400);
+  }
+
+  document.getElementById("aiExtractBtn").addEventListener("click", runExtract);
+  document.getElementById("captureBtn").addEventListener("click", function(){
+    toast("已截取当前页面截图 📷");
+  });
+  dropzone.addEventListener("click", runExtract);
+  ["dragover","dragenter"].forEach(function(ev){
+    dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.add("drag"); });
+  });
+  ["dragleave","drop"].forEach(function(ev){
+    dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.remove("drag"); });
+  });
+  dropzone.addEventListener("drop", runExtract);
+  document.addEventListener("paste", function(){
+    if(document.getElementById("pane-entry").classList.contains("active")){ runExtract(); }
+  });
+  document.getElementById("confirmBtn").addEventListener("click", function(){
+    toast("已确认入库，新增 1 条记录到飞书多维表格 ✓", "feishu");
+    formCard.classList.remove("show");
+  });
+
+  // ---------- Init ----------
+  updateCtx(0);
+  loadWelcome();
+})();
+</script>
+</body>
+</html>
