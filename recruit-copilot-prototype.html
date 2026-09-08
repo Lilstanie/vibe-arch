@@ -188,6 +188,21 @@
   .brand .name small{display:block;font-weight:400;font-size:10.5px;color:var(--muted-2);letter-spacing:.3px;}
   .brand .spacer{flex:1;}
   .brand .cog{color:var(--muted-2);font-size:15px;cursor:pointer;}
+  .demo-btn{
+    background:linear-gradient(135deg,#4f46e5,#7c74f0);color:#fff;border:none;border-radius:14px;
+    padding:5px 12px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;
+    box-shadow:0 2px 8px rgba(79,70,229,.28);transition:.15s;white-space:nowrap;
+  }
+  .demo-btn:hover{filter:brightness(1.06);transform:translateY(-1px);}
+  .demo-btn.running{background:#ef4444;box-shadow:0 2px 8px rgba(239,68,68,.3);}
+  /* demo highlight ring */
+  .demo-focus{position:relative;}
+  .demo-focus::after{
+    content:"";position:absolute;inset:-4px;border-radius:12px;pointer-events:none;
+    box-shadow:0 0 0 2px var(--indigo),0 0 0 6px rgba(79,70,229,.18);
+    animation:ringPulse 1.1s ease-in-out infinite;z-index:2;
+  }
+  @keyframes ringPulse{0%,100%{opacity:.55;}50%{opacity:1;}}
   .tabs{display:flex;gap:4px;}
   .tab{
     flex:1;text-align:center;padding:10px 0;font-size:13.5px;font-weight:600;color:var(--muted);
@@ -467,6 +482,7 @@
           <div class="icon">R</div>
           <div class="name">Recruit Copilot<small>猎头 AI 助手</small></div>
           <div class="spacer"></div>
+          <button class="demo-btn" id="demoBtn">▶ 演示流程</button>
           <div class="cog">⚙</div>
         </div>
         <div class="tabs">
@@ -832,14 +848,13 @@
 
   // Tabs
   var tabs = document.querySelectorAll(".tab");
+  function switchTab(target){
+    tabs.forEach(function(x){ x.classList.toggle("active", x.getAttribute("data-tab")===target); });
+    document.getElementById("pane-chat").classList.toggle("active", target==="chat");
+    document.getElementById("pane-entry").classList.toggle("active", target==="entry");
+  }
   tabs.forEach(function(t){
-    t.addEventListener("click", function(){
-      tabs.forEach(function(x){ x.classList.remove("active"); });
-      t.classList.add("active");
-      var target = t.getAttribute("data-tab");
-      document.getElementById("pane-chat").classList.toggle("active", target==="chat");
-      document.getElementById("pane-entry").classList.toggle("active", target==="entry");
-    });
+    t.addEventListener("click", function(){ switchTab(t.getAttribute("data-tab")); });
   });
 
   // ---------- Entry tab ----------
@@ -875,7 +890,130 @@
   document.getElementById("confirmBtn").addEventListener("click", function(){
     toast("已确认入库，新增 1 条记录到飞书多维表格 ✓", "feishu");
     formCard.classList.remove("show");
+    // Close the loop: the freshly captured candidate is 张伟 → jump into a
+    // clean 对话 session on them so Jay can analyze right away.
+    candSelect.value = "zhangwei";
+    state.cand = "zhangwei";
+    setRound(1); state.ctx = 16; updateCtx(0);
+    chat.innerHTML = "";
+    switchTab("chat");
+    addDivider("已从「录入」入库，自动开启对话会话");
+    setTimeout(function(){ addAI(CAND.zhangwei.welcome, false); }, 260);
   });
+
+  // ---------- Guided end-to-end demo ----------
+  // Runs the whole recruiter workflow on fake data so the prototype
+  // demonstrably "plays through" a coherent flow, ending on the product's
+  // core value: detecting context bloat and auto-resetting the session.
+  var demoBtn = document.getElementById("demoBtn");
+  var demo = { running:false };
+
+  function sleep(ms){
+    return new Promise(function(resolve, reject){
+      setTimeout(function(){ demo.running ? resolve() : reject("stopped"); }, ms);
+    });
+  }
+  function focusOn(el){
+    clearFocus();
+    if(el){ el.classList.add("demo-focus"); }
+  }
+  function clearFocus(){
+    document.querySelectorAll(".demo-focus").forEach(function(e){ e.classList.remove("demo-focus"); });
+  }
+  function lastWriteBtn(){
+    var msgs = chat.querySelectorAll(".msg.ai .msg-actions");
+    if(!msgs.length) return null;
+    return msgs[msgs.length-1].querySelector(".act-btn");
+  }
+
+  function stopDemo(silent){
+    demo.running = false;
+    demoBtn.classList.remove("running");
+    demoBtn.textContent = "▶ 演示流程";
+    clearFocus();
+    if(!silent){ toast("已停止演示"); }
+  }
+
+  async function runDemo(){
+    if(demo.running){ stopDemo(); return; }
+    demo.running = true;
+    demoBtn.classList.add("running");
+    demoBtn.textContent = "■ 停止演示";
+
+    try{
+      // 1) Reset to a clean chat baseline
+      switchTab("chat");
+      candSelect.value = "zhangwei"; state.cand = "zhangwei";
+      setRound(1); state.ctx = 16; updateCtx(0);
+      chat.innerHTML = "";
+      addAI(CAND.zhangwei.welcome, false);
+      await sleep(1400);
+
+      // 2) Go to 录入 and "paste" a candidate
+      switchTab("entry");
+      toast("① 在 Boss 页面按 Ctrl+V 粘贴候选人");
+      focusOn(dropzone);
+      await sleep(900);
+      dropzone.classList.add("drag");
+      await sleep(600);
+      dropzone.classList.remove("drag");
+      clearFocus();
+
+      // 3) AI extract → confirmation form
+      runExtract();
+      await sleep(2000);
+      focusOn(formCard);
+      toast("② AI 已识别字段，核对后入库");
+      await sleep(1400);
+      clearFocus();
+
+      // 4) Confirm into Feishu (this jumps into 对话 with a fresh session)
+      document.getElementById("confirmBtn").click();
+      await sleep(1900);
+
+      // 5) Match analysis
+      toast("③ 一键匹配分析");
+      sendChip("match");
+      await sleep(2600);
+
+      // 6) Write the conclusion back to Feishu records
+      var wb = lastWriteBtn();
+      if(wb){ focusOn(wb.parentNode); await sleep(700); wb.click(); clearFocus(); }
+      await sleep(1500);
+
+      // 7) Red-line check
+      sendChip("redline");
+      await sleep(2700);
+
+      // 8) Opener draft
+      sendChip("opener");
+      await sleep(2700);
+
+      // 9) Go / no-go decision
+      sendChip("decide");
+      await sleep(2700);
+
+      // 10) One more question → context crosses the warning line
+      addUser("顺便对比下他和李娜谁更合适？");
+      respond(null);
+      await sleep(2600);
+
+      // Ensure the context-bloat warning is unmistakably visible
+      if(state.ctx < 64){ state.ctx = 64; updateCtx(0); }
+      toast("④ 检测到上下文过长，可能污染判断");
+      await sleep(1900);
+
+      // 11) The payoff: auto-open a fresh session to keep AI sharp
+      newSession();
+      await sleep(600);
+      toast("✅ 完整猎头工作流演示完成", "feishu");
+      stopDemo(true);
+    }catch(e){
+      // stopped by user — leave the UI where it is
+    }
+  }
+
+  demoBtn.addEventListener("click", runDemo);
 
   // ---------- Init ----------
   updateCtx(0);
