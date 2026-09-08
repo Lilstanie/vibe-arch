@@ -16,7 +16,15 @@ node server/index.js            # 启动 → http://localhost:5178
 node scripts/smoke.js           # 另开一个终端跑端到端冒烟测试
 ```
 
-打开浏览器访问 `http://localhost:5178`。默认用 **离线 mock** 跑 AI；要接真实模型：
+三个入口：
+
+| 入口 | 地址 | 形态 |
+|---|---|---|
+| **产品展示页** | `http://localhost:5178/landing.html` | 落地页，并列展示两种形态（含实时预览） |
+| **Web 工作台** | `http://localhost:5178/` | 深度分析与管理中枢（SPA） |
+| **Chrome 扩展联调** | `http://localhost:5178/mock-boss.html` | 模拟 Boss 页 + 扩展侧边栏 |
+
+默认用 **离线 mock** 跑 AI；要接真实模型：
 
 ```bash
 export OPENAI_API_KEY=sk-...          # 默认 provider = ChatGPT
