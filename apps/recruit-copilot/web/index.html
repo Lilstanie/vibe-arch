@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Recruit Copilot</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <nav class="nav">
+      <div class="brand">
+        <div class="logo">R</div>
+        <div class="t">Recruit Copilot<small>猎头 AI 工作台</small></div>
+      </div>
+      <a class="item" href="#/dashboard"><span class="ic">🏠</span> 概览</a>
+      <a class="item" href="#/jd"><span class="ic">📋</span> 岗位分析</a>
+      <a class="item" href="#/kanban"><span class="ic">🗂️</span> 人才看板 <span class="count" id="navCandCount">0</span></a>
+      <a class="item" href="#/screen"><span class="ic">📄</span> 简历初筛</a>
+      <a class="item" href="#/reminders"><span class="ic">⏰</span> 跟进提醒 <span class="count" id="navRemCount">0</span></a>
+      <a class="item" href="#/calls"><span class="ic">📞</span> 通话纪要</a>
+      <div class="spacer"></div>
+      <div class="provider" id="providerBox"><span class="dot"></span>AI: <b id="providerName">…</b></div>
+    </nav>
+
+    <div class="main">
+      <div class="topbar">
+        <h1 id="pageTitle">概览</h1>
+        <span class="sub" id="pageSub"></span>
+        <div class="grow"></div>
+        <button class="btn sm" id="resetBtn">重置示例数据</button>
+      </div>
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim"></div>
+  <div class="drawer" id="drawer"></div>
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

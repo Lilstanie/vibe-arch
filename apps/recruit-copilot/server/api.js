@@ -1,0 +1,239 @@
+// API handlers: wires HTTP routes to the store and the stateless AI agents.
+
+import { json } from "./router.js";
+import { col, raw, logActivity, reset } from "./store.js";
+import { runAgent } from "./llm/agent.js";
+import { activeProvider } from "./llm/provider.js";
+import { STAGES, SEED } from "./seed.js";
+
+const jobs = col("jobs");
+const candidates = col("candidates");
+const reminders = col("reminders");
+const calls = col("calls");
+
+const jobAnalysisFor = (candidate) => {
+  const job = jobs.find(candidate.job_id);
+  return job?.analysis || null;
+};
+
+export function registerRoutes(r) {
+  r.get("/api/health", (req, res) => json(res, 200, { ok: true }));
+
+  r.get("/api/meta", (req, res) =>
+    json(res, 200, { stages: STAGES, provider: activeProvider() })
+  );
+
+  r.get("/api/state", (req, res) => json(res, 200, raw()));
+
+  r.post("/api/reset", (req, res) => {
+    reset(SEED);
+    json(res, 200, { ok: true });
+  });
+
+  // ---------- Jobs / JD ----------
+  r.get("/api/jobs", (req, res) => json(res, 200, jobs.all()));
+
+  r.post("/api/jobs", async (req, res, { body }) => {
+    const job = jobs.insert({
+      title: body.title || "未命名岗位",
+      company: body.company || "",
+      jd_text: body.jd_text || "",
+      analysis: null,
+    });
+    logActivity({ type: "job", text: `新增岗位「${job.title}」` });
+    json(res, 201, job);
+  });
+
+  // JD -> structured sourcing strategy (AI task #1)
+  r.post("/api/jobs/:id/analyze", async (req, res, { params }) => {
+    const job = jobs.find(params.id);
+    if (!job) return json(res, 404, { error: "job not found" });
+    try {
+      const out = await runAgent("jd_analyze", {
+        title: job.title,
+        company: job.company,
+        jd_text: job.jd_text,
+      });
+      jobs.update(job.id, { analysis: out.data });
+      logActivity({ type: "ai", text: `AI 分析岗位「${job.title}」（${out.provider}${out.repaired ? "·修复" : ""}）` });
+      json(res, 200, { job: jobs.find(job.id), meta: { provider: out.provider, ms: out.ms, repaired: out.repaired } });
+    } catch (e) {
+      json(res, 502, { error: String(e.message || e), errors: e.errors });
+    }
+  });
+
+  // ---------- Candidates ----------
+  r.get("/api/candidates", (req, res) => json(res, 200, candidates.all()));
+
+  r.get("/api/candidates/:id", (req, res, { params }) => {
+    const c = candidates.find(params.id);
+    return c ? json(res, 200, c) : json(res, 404, { error: "not found" });
+  });
+
+  r.post("/api/candidates", async (req, res, { body }) => {
+    const c = candidates.insert({
+      job_id: body.job_id || jobs.all()[0]?.id || null,
+      name: body.name || "(待确认)",
+      title: body.title || "",
+      company: body.company || "",
+      years: body.years || "",
+      education: body.education || "",
+      expected_salary: body.expected_salary || "",
+      city: body.city || "",
+      skills: body.skills || [],
+      highlights: body.highlights || [],
+      resume_text: body.resume_text || "",
+      stage: body.stage || "sourced",
+      match: null,
+      notes: body.notes || "",
+    });
+    logActivity({ type: "candidate", text: `新增候选人「${c.name}」入库` });
+    json(res, 201, c);
+  });
+
+  r.patch("/api/candidates/:id", (req, res, { params, body }) => {
+    const c = candidates.update(params.id, body);
+    return c ? json(res, 200, c) : json(res, 404, { error: "not found" });
+  });
+
+  // kanban stage move
+  r.post("/api/candidates/:id/stage", (req, res, { params, body }) => {
+    const c = candidates.find(params.id);
+    if (!c) return json(res, 404, { error: "not found" });
+    const updated = candidates.update(c.id, { stage: body.stage });
+    logActivity({ type: "stage", text: `「${c.name}」移动到「${STAGES.find((s) => s.key === body.stage)?.label || body.stage}」` });
+    json(res, 200, updated);
+  });
+
+  // candidate vs job match (AI task #2)
+  r.post("/api/candidates/:id/match", async (req, res, { params }) => {
+    const c = candidates.find(params.id);
+    if (!c) return json(res, 404, { error: "not found" });
+    let analysis = jobAnalysisFor(c);
+    try {
+      // auto-analyze the job first if not done yet
+      if (!analysis) {
+        const job = jobs.find(c.job_id);
+        if (job) {
+          const a = await runAgent("jd_analyze", { title: job.title, company: job.company, jd_text: job.jd_text });
+          jobs.update(job.id, { analysis: a.data });
+          analysis = a.data;
+        }
+      }
+      const out = await runAgent("match_candidate", { jd_analysis: analysis, candidate: c });
+      candidates.update(c.id, { match: out.data });
+      logActivity({ type: "ai", text: `AI 匹配「${c.name}」→ ${out.data.score}分 / ${out.data.verdict}` });
+      json(res, 200, { candidate: candidates.find(c.id), meta: { provider: out.provider, ms: out.ms } });
+    } catch (e) {
+      json(res, 502, { error: String(e.message || e), errors: e.errors });
+    }
+  });
+
+  // outreach message draft (AI task #4)
+  r.post("/api/candidates/:id/message", async (req, res, { params, body }) => {
+    const c = candidates.find(params.id);
+    if (!c) return json(res, 404, { error: "not found" });
+    try {
+      const out = await runAgent("draft_message", {
+        candidate: c,
+        jd_analysis: jobAnalysisFor(c),
+        kind: body.kind || "opener",
+        tone: body.tone,
+      });
+      logActivity({ type: "ai", text: `AI 为「${c.name}」生成${body.kind === "followup" ? "跟进" : "开场白"}话术` });
+      json(res, 200, { ...out.data, meta: { provider: out.provider } });
+    } catch (e) {
+      json(res, 502, { error: String(e.message || e) });
+    }
+  });
+
+  // resume screening (AI task #3) — feed unsure ones to a human
+  r.post("/api/screen-resume", async (req, res, { body }) => {
+    const job = body.job_id ? jobs.find(body.job_id) : jobs.all()[0];
+    try {
+      const out = await runAgent("screen_resume", {
+        resume_text: body.resume_text || "",
+        jd_analysis: job?.analysis || null,
+      });
+      logActivity({ type: "ai", text: `AI 初筛简历 → ${out.data.preview_verdict}${out.data.needs_human ? "（需人工）" : ""}` });
+      json(res, 200, { ...out.data, meta: { provider: out.provider } });
+    } catch (e) {
+      json(res, 502, { error: String(e.message || e) });
+    }
+  });
+
+  // ---------- Reminders (activation / follow-up) ----------
+  r.get("/api/reminders", (req, res) => json(res, 200, reminders.all()));
+
+  r.post("/api/reminders", (req, res, { body }) => {
+    const rem = reminders.insert({
+      candidate_id: body.candidate_id || null,
+      text: body.text || "",
+      due: body.due || new Date().toISOString(),
+      due_hint: body.due_hint || "",
+      done: false,
+    });
+    json(res, 201, rem);
+  });
+
+  r.post("/api/reminders/:id/done", (req, res, { params }) => {
+    const rem = reminders.update(params.id, { done: true });
+    return rem ? json(res, 200, rem) : json(res, 404, { error: "not found" });
+  });
+
+  // ---------- Calls (phone -> text -> summary + auto tasks) (AI task #5) ----------
+  r.get("/api/calls", (req, res) => json(res, 200, calls.all()));
+
+  r.post("/api/calls", async (req, res, { body }) => {
+    const c = body.candidate_id ? candidates.find(body.candidate_id) : null;
+    try {
+      const out = await runAgent("summarize_call", {
+        transcript: body.transcript || "",
+        candidate: c,
+        resume: c?.resume_text,
+      });
+      const call = calls.insert({
+        candidate_id: body.candidate_id || null,
+        transcript: body.transcript || "",
+        result: out.data,
+      });
+      // auto-create reminders from suggested actions (proactive follow-up)
+      const created = [];
+      for (const a of out.data.suggested_actions || []) {
+        const due = hintToDue(a.due_hint);
+        const rem = reminders.insert({
+          candidate_id: body.candidate_id || null,
+          text: a.action,
+          due,
+          due_hint: a.due_hint || "",
+          done: false,
+          source: "call",
+        });
+        created.push(rem);
+      }
+      logActivity({ type: "ai", text: `AI 整理通话纪要${c ? `（${c.name}）` : ""}，生成 ${created.length} 条跟进任务` });
+      json(res, 201, { call, reminders_created: created, meta: { provider: out.provider } });
+    } catch (e) {
+      json(res, 502, { error: String(e.message || e) });
+    }
+  });
+}
+
+// naive natural-language -> timestamp mapping (timezone: server local)
+function hintToDue(hint = "") {
+  const d = new Date();
+  const set = (h) => {
+    d.setHours(h, 0, 0, 0);
+    return d.toISOString();
+  };
+  if (/今晚|tonight/.test(hint)) return set(20);
+  if (/明天上午|明早/.test(hint)) return new Date(d.getTime() + 24 * 3600e3).toISOString();
+  if (/明天|tomorrow/.test(hint)) return new Date(d.getTime() + 24 * 3600e3).toISOString();
+  if (/本周末|周末|weekend/.test(hint)) {
+    const day = d.getDay();
+    const add = ((6 - day + 7) % 7) || 6; // next Saturday
+    return new Date(d.getTime() + add * 24 * 3600e3).toISOString();
+  }
+  if (/下周|next week/.test(hint)) return new Date(d.getTime() + 7 * 24 * 3600e3).toISOString();
+  return new Date(d.getTime() + 24 * 3600e3).toISOString();
+}

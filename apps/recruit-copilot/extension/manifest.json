@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Recruit Copilot — Boss 助手",
+  "version": "0.1.0",
+  "description": "在 Boss 直聘页面就地调用 Recruit Copilot：读候选人、拉匹配、把开场白半自动填入聊天框（坚持人工确认发送）。",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://www.zhipin.com/*", "http://localhost:5178/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.zhipin.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_title": "Recruit Copilot" }
+}
