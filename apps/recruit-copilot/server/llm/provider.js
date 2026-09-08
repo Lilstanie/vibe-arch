@@ -6,6 +6,7 @@ const env = process.env;
 
 export function activeProvider() {
   if (env.MOCK_LLM === "1") return "mock";
+  if (env.OPENROUTER_API_KEY) return "openrouter";
   if (env.OPENAI_API_KEY) return "openai";
   if (env.ANTHROPIC_API_KEY) return "anthropic";
   return "mock";
@@ -47,6 +48,36 @@ async function openai({ system, user, temperature }) {
   return data.choices?.[0]?.message?.content ?? "";
 }
 
+// OpenRouter — OpenAI-compatible gateway to many models (default provider when
+// OPENROUTER_API_KEY is set). Pick a model that supports JSON mode for the
+// structured agents (e.g. openai/gpt-4o-mini, openai/gpt-4o, google/gemini-flash-1.5).
+async function openrouter({ system, user, temperature }) {
+  const model = env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+  const res = await withTimeout((signal) =>
+    fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+        "X-Title": "Recruit Copilot",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: temperature ?? 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      }),
+    })
+  );
+  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
 async function anthropic({ system, user, temperature }) {
   const model = env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
   const res = await withTimeout((signal) =>
@@ -74,6 +105,7 @@ async function anthropic({ system, user, temperature }) {
 
 export async function complete(opts) {
   const provider = activeProvider();
+  if (provider === "openrouter") return openrouter(opts);
   if (provider === "openai") return openai(opts);
   if (provider === "anthropic") return anthropic(opts);
   throw new Error("no live provider");
@@ -82,6 +114,20 @@ export async function complete(opts) {
 // multi-turn chat (for the HR<->LLM conversation panel)
 export async function chat({ system, messages, temperature = 0.4 }) {
   const provider = activeProvider();
+  if (provider === "openrouter") {
+    const model = env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
+    const res = await withTimeout((signal) =>
+      fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        signal,
+        headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENROUTER_API_KEY}`, "X-Title": "Recruit Copilot" },
+        body: JSON.stringify({ model, temperature, messages: [{ role: "system", content: system }, ...messages] }),
+      })
+    );
+    if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? "";
+  }
   if (provider === "openai") {
     const model = env.OPENAI_MODEL || "gpt-4o-mini";
     const res = await withTimeout((signal) =>

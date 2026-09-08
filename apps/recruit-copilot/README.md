@@ -26,13 +26,19 @@ node scripts/smoke.js           # 另开一个终端跑端到端冒烟测试
 
 > **一体化**：扩展不是独立小挂件，而是把完整工作台（`/?embed=1`）以侧边栏 iframe 停靠在 Boss 右侧——同一套界面、同一个后端。Boss 页上打开的候选人会自动载入侧栏工作台。
 
-默认用 **离线 mock** 跑 AI；要接真实模型：
+默认用 **离线 mock** 跑 AI；要接真实模型（优先级 OpenRouter > OpenAI > Anthropic > mock）：
 
 ```bash
-export OPENAI_API_KEY=sk-...          # 默认 provider = ChatGPT
-# 或
-export ANTHROPIC_API_KEY=sk-ant-...   # 备选 provider = Claude
+# OpenRouter（OpenAI 兼容网关，一个 key 接多模型）
+export OPENROUTER_API_KEY=sk-or-v1-...
+export OPENROUTER_MODEL=openai/gpt-4o-mini   # 结构化 Agent 需支持 JSON mode 的模型
+# 或 OpenAI / Anthropic
+export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+> ⚠️ 注意 `openrouter.ai` 需可出网；受限网络里要把它加入 egress 允许名单，本机直接可用。
+> **密钥只从环境变量读取，绝不写进仓库。**
 
 见 `.env.example`。
 

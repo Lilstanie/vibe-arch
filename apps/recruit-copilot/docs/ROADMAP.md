@@ -30,7 +30,8 @@
 - [x] **一体化**：扩展把【完整 Web 工作台】以侧边栏 iframe（`/?embed=1`）停靠在 Boss 右侧——扩展形态与 Web 形态是同一套 UI/同一后端的两种入口，不是两个东西；侧栏读到的候选人自动载入工作台
 - [x] Web 应用「嵌入模式」：窄侧栏布局（图标导航 + 紧凑排版），`?embed=1&candidate=<名字>`
 - [x] 联调页 `web/mock-boss.html`（模拟 Boss 页），无需装扩展即可看整合效果；展示页 `/landing.html` 用真实 iframe 呈现"一体"预览
-- [ ] 打包上架 / 按真实 Boss DOM 校准选择器；跨源用 postMessage 同步候选人
+- [x] **真实 Boss 跨源桥接**：内容脚本 ↔ 侧栏 iframe 用 `postMessage` 通信——Boss 侧切候选人 → 推给侧栏工作台；侧栏里点「↧ 填入 Boss」→ 内容脚本把话术填进 Boss 聊天框（含来源校验 `event.source===iframe`、每日额度）
+- [ ] 打包成可安装扩展 / 按真实 Boss DOM 校准选择器
 - **价值**：一个工作台，既贴着 Boss 就地干活，也能全屏深度分析——不切产品、不切数据。
 
 ## 里程碑 3 —— 智能寻访（best ROI）✅ 已完成（首版）

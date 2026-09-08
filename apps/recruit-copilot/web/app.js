@@ -133,7 +133,28 @@ const mdLite = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/
 function chatBubble(m) {
   const who = m.role === "user" ? "我" : "AI 助手";
   const text = m.role === "user" ? m.display || m.content : m.content;
-  return `<div class="cmsg ${m.role}"><div class="who">${who}</div><div class="b">${mdLite(text)}</div></div>`;
+  const act =
+    m.role === "assistant" && document.body.classList.contains("embed")
+      ? `<div class="cmsg-act"><button class="mini" data-fill="${encodeURIComponent(m.content)}">↧ 填入 Boss</button><button class="mini" data-copy="${esc(m.content)}">复制</button></div>`
+      : "";
+  return `<div class="cmsg ${m.role}"><div class="who">${who}</div><div class="b">${mdLite(text)}</div>${act}</div>`;
+}
+
+// Send text into the Boss chat box via the extension content script (parent
+// frame). On real Boss the iframe can't touch the page DOM, so we postMessage
+// out and the content script does the fill. Standalone → just copy.
+function fillIntoBoss(text) {
+  if (window.self === window.top) { copyText(text); toast("已复制（独立模式，无 Boss 页可填）"); return; }
+  window.parent.postMessage({ source: "rc-app", type: "fill", text }, "*");
+}
+async function onExtCandidate(name) {
+  if (!S.state) return; // boot not finished; initial candidate also comes via URL param
+  const c = S.state.candidates.find((x) => x.name === name);
+  if (!c || c.id === chatState.candidateId) return;
+  chatState.candidateId = c.id;
+  if (location.hash !== "#/chat") { location.hash = "#/chat"; return; }
+  const sel = $("#chCand"); if (sel) sel.value = c.id;
+  await newSessionChat();
 }
 
 async function viewChat(root) {
@@ -605,8 +626,9 @@ function drawCandidateBody(id) {
     $("#msgBox").innerHTML = '<span class="spin"></span> <span class="muted small">AI 正在拟稿…</span>';
     try {
       const res = await api("POST", `/api/candidates/${id}/message`, { kind });
+      const embed = document.body.classList.contains("embed");
       $("#msgBox").innerHTML = res.variants.map((v) =>
-        `<div class="msgvariant"><button class="copy" data-copy="${esc(v.text)}">复制</button><div class="lbl">${esc(v.label)}</div><div class="tx">${esc(v.text)}</div></div>`
+        `<div class="msgvariant"><button class="copy" data-copy="${esc(v.text)}">复制</button>${embed ? `<button class="copy" data-fill="${encodeURIComponent(v.text)}" style="margin-right:6px">↧ 填入 Boss</button>` : ""}<div class="lbl">${esc(v.label)}</div><div class="tx">${esc(v.text)}</div></div>`
       ).join("") + (res.notes && res.notes.length ? `<div class="small muted" style="margin-top:4px">${res.notes.map(esc).join(" · ")}</div>` : "");
     } catch (e) { $("#msgBox").innerHTML = `<div class="empty small">失败：${esc(e.message)}</div>`; }
   };
@@ -878,6 +900,17 @@ function viewCalls(root) {
 document.addEventListener("click", (e) => {
   const t = e.target.closest("[data-copy]");
   if (t) copyText(t.getAttribute("data-copy"));
+  const f = e.target.closest("[data-fill]");
+  if (f) fillIntoBoss(decodeURIComponent(f.getAttribute("data-fill")));
+});
+
+// Bridge with the extension content script (real Boss): it tells us which
+// candidate is open, and acks our fill requests.
+window.addEventListener("message", (e) => {
+  const d = e.data;
+  if (!d || d.source !== "rc-ext") return;
+  if (d.type === "candidate" && d.name) onExtCandidate(d.name);
+  if (d.type === "fill-result") toast(d.ok ? `已填入 Boss 聊天框（今日 ${d.count}）✓` : d.msg || "填入失败");
 });
 $("#resetBtn").onclick = async () => {
   await api("POST", "/api/reset");

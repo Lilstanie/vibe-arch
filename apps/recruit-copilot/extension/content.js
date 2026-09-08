@@ -102,17 +102,35 @@
     dock.querySelector("#rc-collapse").onclick = () => setCollapsed(true);
     tab.onclick = () => setCollapsed(false);
 
+    // when the workbench finishes loading, tell it who's open
+    iframe.addEventListener("load", () => postCandidate());
+    // receive fill requests from the workbench (cross-origin bridge)
+    window.addEventListener("message", async (e) => {
+      if (e.source !== iframe.contentWindow) return; // only trust our own iframe
+      const d = e.data;
+      if (!d || d.source !== "rc-app") return;
+      if (d.type === "fill") {
+        const ok = fillChatBox(d.text);
+        let count;
+        if (ok) count = await bumpGreet();
+        iframe.contentWindow.postMessage({ source: "rc-ext", type: "fill-result", ok, count, msg: ok ? "" : "没找到聊天输入框" }, APP);
+      }
+    });
+
     refreshCandidate(true);
     // Boss is an SPA; re-detect the candidate when the name element changes
     let last = readName();
     setInterval(() => { const n = readName(); if (n && n !== last) { last = n; refreshCandidate(); } }, 1500);
   }
 
+  function postCandidate() {
+    try { iframe.contentWindow.postMessage({ source: "rc-ext", type: "candidate", name: readName() }, APP); } catch {}
+  }
   function refreshCandidate(first) {
     const name = readName();
     $name.textContent = name ? "候选人：" + name : "未识别到候选人";
-    const url = appUrl(name);
-    if (first || iframe.src !== url) iframe.src = url; // reload workbench focused on this candidate
+    if (first) iframe.src = appUrl(name); // initial load carries the candidate in the URL
+    else postCandidate(); // afterwards just message it — no reload, keeps state
   }
 
   function setCollapsed(v) {
