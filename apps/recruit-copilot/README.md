@@ -33,6 +33,7 @@ export ANTHROPIC_API_KEY=sk-ant-...   # 备选 provider = Claude
 | 你的诉求 | 本项目怎么落地 |
 |---|---|
 | **① Chat 输出长期稳定、不漂移、不污染** | **无状态任务 Agent**：每次 AI 调用都是全新、隔离的 prompt（不累积对话历史）+ JSON Schema 校验 + 一次自动修复重试。见 `server/llm/agent.js`。 |
+| **HR 直接和 LLM 聊天（像 ChatGPT/Claude）** | 「AI 对话」面板：多轮对话 + **可加自定义技能**（总结简历/匹配/开场白/红线/面试提纲/通话纪要，及 HR 自建）。按候选人**隔离会话** + 上下文占用条 + 一键新会话，防污染。见 `server/llm/chat.js`、`server/skills.js`。 |
 | **JD → 岗位分析** | `POST /api/jobs/:id/analyze` → 硬性要求 / 红线 / Boss 关键词 / 布尔搜索串 / 对标公司 / 初筛问题。 |
 | **匹配沟通** | `POST /api/candidates/:id/match`（匹配分 + 红线逐条检查）+ `/message`（开场白 / 跟进话术）。 |
 | **流程管理 / Kanban** | 候选人看板（拖拽推进阶段）+ 候选人详情抽屉 + 活动流审计。 |

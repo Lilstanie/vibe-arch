@@ -10,11 +10,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 
-const EMPTY = { jobs: [], candidates: [], reminders: [], calls: [], activities: [] };
+const EMPTY = { jobs: [], candidates: [], reminders: [], calls: [], activities: [], chats: [], skills: [] };
 
 function load() {
   try {
-    return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    const parsed = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    return { ...structuredClone(EMPTY), ...parsed }; // ensure new collections exist
   } catch {
     return structuredClone(EMPTY);
   }

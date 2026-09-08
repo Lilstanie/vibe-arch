@@ -78,3 +78,37 @@ export async function complete(opts) {
   if (provider === "anthropic") return anthropic(opts);
   throw new Error("no live provider");
 }
+
+// multi-turn chat (for the HR<->LLM conversation panel)
+export async function chat({ system, messages, temperature = 0.4 }) {
+  const provider = activeProvider();
+  if (provider === "openai") {
+    const model = env.OPENAI_MODEL || "gpt-4o-mini";
+    const res = await withTimeout((signal) =>
+      fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        signal,
+        headers: { "content-type": "application/json", authorization: `Bearer ${env.OPENAI_API_KEY}` },
+        body: JSON.stringify({ model, temperature, messages: [{ role: "system", content: system }, ...messages] }),
+      })
+    );
+    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? "";
+  }
+  if (provider === "anthropic") {
+    const model = env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+    const res = await withTimeout((signal) =>
+      fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal,
+        headers: { "content-type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model, max_tokens: 1500, temperature, system, messages }),
+      })
+    );
+    if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    return data.content?.[0]?.text ?? "";
+  }
+  throw new Error("no live provider");
+}

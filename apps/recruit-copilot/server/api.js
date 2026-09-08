@@ -7,6 +7,12 @@ import { activeProvider } from "./llm/provider.js";
 import { STAGES, SEED } from "./seed.js";
 import * as feishu from "../integrations/feishu.js";
 import { followupSuggestions, activationCandidates } from "./rules.js";
+import { BUILTIN_SKILLS, expandSkill } from "./skills.js";
+import { runChat, estimateUsage } from "./llm/chat.js";
+
+const chats = col("chats");
+const customSkills = col("skills");
+const allSkills = () => [...BUILTIN_SKILLS, ...customSkills.all()];
 
 const hasOpenReminder = (candId, source) =>
   col("reminders").all().some((r) => !r.done && r.candidate_id === candId && r.source === source);
@@ -372,6 +378,78 @@ export function registerRoutes(r) {
     }
     logActivity({ type: "activation", text: `人才池激活「${job.title}」：新增 ${created.length} 条` });
     json(res, 201, { created, count: created.length });
+  });
+
+  // ---------- Chat panel: HR <-> LLM conversation + skills ----------
+  r.get("/api/skills", (req, res) => json(res, 200, allSkills()));
+
+  r.post("/api/skills", (req, res, { body }) => {
+    if (!body.name || !body.prompt) return json(res, 400, { error: "需要 name 和 prompt" });
+    const sk = customSkills.insert({
+      name: body.name, icon: body.icon || "⭐", prompt: body.prompt,
+      needs_input: !!body.needs_input, builtin: false,
+    });
+    logActivity({ type: "skill", text: `新增自定义技能「${sk.name}」` });
+    json(res, 201, sk);
+  });
+
+  r.del("/api/skills/:id", (req, res, { params }) => {
+    if (BUILTIN_SKILLS.some((s) => s.id === params.id)) return json(res, 400, { error: "内置技能不可删除" });
+    json(res, 200, { ok: customSkills.remove(params.id) });
+  });
+
+  r.get("/api/chats", (req, res) =>
+    json(res, 200, chats.all().map((c) => ({
+      id: c.id, candidate_id: c.candidate_id, title: c.title || "新会话",
+      count: c.messages.length, created_at: c.created_at, updated_at: c.updated_at,
+    })))
+  );
+
+  r.post("/api/chats", (req, res, { body }) => {
+    const c = chats.insert({ candidate_id: body.candidate_id || null, title: "新会话", messages: [] });
+    json(res, 201, c);
+  });
+
+  r.get("/api/chats/:id", (req, res, { params }) => {
+    const c = chats.find(params.id);
+    if (!c) return json(res, 404, { error: "not found" });
+    json(res, 200, { ...c, usage: estimateUsage(c.messages) });
+  });
+
+  r.del("/api/chats/:id", (req, res, { params }) => json(res, 200, { ok: chats.remove(params.id) }));
+
+  r.post("/api/chats/:id/message", async (req, res, { params, body }) => {
+    const session = chats.find(params.id);
+    if (!session) return json(res, 404, { error: "not found" });
+    const candidate = session.candidate_id ? candidates.find(session.candidate_id) : null;
+    const job = candidate ? jobs.find(candidate.job_id) : null;
+
+    // build the user turn (skill = structured prompt injection)
+    let content = body.text || "";
+    let display;
+    if (body.skill_id) {
+      const skill = allSkills().find((s) => s.id === body.skill_id);
+      if (skill) {
+        content = expandSkill(skill, candidate, job) + (body.text ? `\n${body.text}` : "");
+        display = `${skill.icon} ${skill.name}${body.text ? "：" + body.text : ""}`;
+      }
+    }
+    if (!content.trim()) return json(res, 400, { error: "空消息" });
+
+    session.messages.push({ role: "user", content, display });
+    try {
+      const reply = await runChat(session.messages, candidate, job);
+      session.messages.push({ role: "assistant", content: reply });
+      if (!session.title || session.title === "新会话") {
+        session.title = (display || content).replace(/\s+/g, " ").slice(0, 20);
+      }
+      chats.update(session.id, { messages: session.messages, title: session.title });
+      json(res, 200, { messages: session.messages, usage: estimateUsage(session.messages), provider: activeProvider() });
+    } catch (e) {
+      session.messages.pop(); // roll back the user turn on failure
+      chats.update(session.id, { messages: session.messages });
+      json(res, 502, { error: String(e.message || e) });
+    }
   });
 
   // ---------- Calls (phone -> text -> summary + auto tasks) (AI task #5) ----------

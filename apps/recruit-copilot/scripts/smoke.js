@@ -101,6 +101,25 @@ const run = async () => {
   ok("sourcing feedback loop", src2.status === 200 && src2.data.job.sourcing_feedback.length >= 1,
      `feedback=${src2.data.job.sourcing_feedback.length}`);
 
+  // ---- Chat panel + skills ----
+  const skills = await j("GET", "/api/skills");
+  ok("builtin skills", Array.isArray(skills.data) && skills.data.length >= 6, `skills=${skills.data.length}`);
+
+  const sess = await j("POST", "/api/chats", { candidate_id: zw.id });
+  ok("new chat session", sess.status === 201 && !!sess.data.id);
+
+  const m1 = await j("POST", `/api/chats/${sess.data.id}/message`, { skill_id: "sk_summary" });
+  ok("chat skill message", m1.status === 200 && m1.data.messages.length === 2 && typeof m1.data.usage.pct === "number",
+     `msgs=${m1.data.messages?.length}, ctx=${m1.data.usage?.pct}%`);
+
+  const m2 = await j("POST", `/api/chats/${sess.data.id}/message`, { text: "他适合远程吗？" });
+  ok("chat free text", m2.status === 200 && m2.data.messages.length === 4, `msgs=${m2.data.messages?.length}`);
+
+  const custom = await j("POST", "/api/skills", { name: "谈薪话术", icon: "💰", prompt: "为候选人 {{name}} 写一段谈薪话术。" });
+  ok("add custom skill", custom.status === 201 && !!custom.data.id);
+  const m3 = await j("POST", `/api/chats/${sess.data.id}/message`, { skill_id: custom.data.id });
+  ok("custom skill message", m3.status === 200 && m3.data.messages.length === 6);
+
   console.log(`\n${fail === 0 ? "ALL PASS" : "SOME FAILED"} — ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);
 };

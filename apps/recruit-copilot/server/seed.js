@@ -130,6 +130,8 @@ export const SEED = {
     },
   ],
   calls: [],
+  chats: [],
+  skills: [],
   activities: [
     { id: "act_seed", at: t(-1), type: "system", text: "系统初始化，载入示例数据" },
   ],

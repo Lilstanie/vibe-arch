@@ -72,6 +72,7 @@ const TZ = "Asia/Shanghai";
 // ---------- router ----------
 const routes = {
   dashboard: { title: "概览", sub: "今日一览与近期动态", render: viewDashboard },
+  chat: { title: "AI 对话", sub: "和 AI 助手直接聊，技能一键调用；按候选人隔离会话防污染", render: viewChat },
   jd: { title: "岗位分析", sub: "把 JD 拆成可执行的寻访策略", render: viewJD },
   sourcing: { title: "智能寻访", sub: "综合候选人池 + 反馈，优化关键词并排序打招呼优先级", render: viewSourcing },
   kanban: { title: "人才看板", sub: "拖拽卡片推进候选人阶段", render: viewKanban },
@@ -125,6 +126,173 @@ function viewDashboard(root) {
 }
 const feedRow = (a) =>
   `<li><span class="ic">${a.type === "ai" ? "✨" : a.type === "stage" ? "↔" : "•"}</span><span>${esc(a.text)}</span><span class="at">${new Date(a.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span></li>`;
+
+// ---- AI chat panel (HR <-> LLM, with skills) ----
+const chatState = { sessionId: null, candidateId: "", skills: [], pendingSkill: null };
+const mdLite = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n/g, "<br>");
+function chatBubble(m) {
+  const who = m.role === "user" ? "我" : "AI 助手";
+  const text = m.role === "user" ? m.display || m.content : m.content;
+  return `<div class="cmsg ${m.role}"><div class="who">${who}</div><div class="b">${mdLite(text)}</div></div>`;
+}
+
+async function viewChat(root) {
+  chatState.skills = await api("GET", "/api/skills");
+  const cands = S.state.candidates;
+  root.innerHTML = `
+    <div class="chatwrap">
+      <div class="chathead">
+        <div class="row">
+          <select id="chCand">
+            <option value="">通用对话（不载入档案）</option>
+            ${cands.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.title || "")}</option>`).join("")}
+          </select>
+          <button class="btn sm" id="chNew">＋ 新会话</button>
+          <div class="ctxbar-wrap">
+            <div class="ctxbar-lab"><span id="chBadges"></span><span id="chPct">0%</span></div>
+            <div class="ctxbar" id="chBar"><i style="width:0%"></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="skillrow" id="chSkills"></div>
+      <div class="thread" id="chThread"></div>
+      <div id="chPend"></div>
+      <div class="chatinput">
+        <textarea id="chInput" rows="1" placeholder="问点什么，或点上方技能…"></textarea>
+        <button class="send-btn" id="chSend">➤</button>
+      </div>
+    </div>`;
+  renderSkillRow();
+  $("#chCand").value = chatState.candidateId || "";
+  $("#chCand").onchange = async () => { chatState.candidateId = $("#chCand").value; await newSessionChat(); };
+  $("#chNew").onclick = newSessionChat;
+  $("#chSend").onclick = () => sendChat();
+  const input = $("#chInput");
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+  input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(120, input.scrollHeight) + "px"; });
+
+  if (chatState.sessionId) await loadChat();
+  else await newSessionChat();
+}
+
+function renderSkillRow() {
+  const row = $("#chSkills");
+  if (!row) return;
+  row.innerHTML =
+    chatState.skills.map((s) =>
+      `<span class="skillchip" data-skill="${s.id}">${s.icon} ${esc(s.name)}${s.builtin ? "" : ` <span class="x" data-del="${s.id}">×</span>`}</span>`
+    ).join("") + `<span class="skillchip add" id="chAddSkill">＋ 技能</span>`;
+  row.querySelectorAll("[data-skill]").forEach((el) =>
+    (el.onclick = (e) => { if (e.target.dataset.del) return; onSkillClick(el.dataset.skill); })
+  );
+  row.querySelectorAll("[data-del]").forEach((el) =>
+    (el.onclick = async (e) => {
+      e.stopPropagation();
+      await api("DELETE", `/api/skills/${el.dataset.del}`);
+      chatState.skills = await api("GET", "/api/skills");
+      renderSkillRow();
+      toast("已删除技能");
+    })
+  );
+  $("#chAddSkill").onclick = addCustomSkill;
+}
+
+function onSkillClick(id) {
+  const s = chatState.skills.find((x) => x.id === id);
+  if (!s) return;
+  if (s.needs_input) {
+    chatState.pendingSkill = s.id;
+    $("#chPend").innerHTML = `<div style="padding:6px 14px 0"><span class="pendtag">${s.icon} ${esc(s.name)} <span class="x" id="chClearPend">✕</span></span> <span class="small muted">在下方输入/粘贴内容后发送</span></div>`;
+    $("#chClearPend").onclick = () => { chatState.pendingSkill = null; $("#chPend").innerHTML = ""; };
+    const inp = $("#chInput"); inp.placeholder = `${s.name}：输入或粘贴内容…`; inp.focus();
+    document.querySelectorAll(".skillchip").forEach((c) => c.classList.toggle("active", c.dataset.skill === id));
+  } else {
+    sendChat({ skill_id: id });
+  }
+}
+
+async function addCustomSkill() {
+  const name = prompt("技能名称？（如：竞品背调 / 谈薪话术）");
+  if (!name) return;
+  const icon = prompt("图标 emoji？", "⭐") || "⭐";
+  const p = prompt("提示词模板？可用占位符：{{name}} {{candidate}} {{resume}} {{job}}", `总结候选人 {{name}} 的 ...`);
+  if (!p) return;
+  const needs_input = confirm("发送前需要我先在输入框补充内容吗？\n（确定=是，适合“通话纪要”这类需要粘贴内容的技能）");
+  await api("POST", "/api/skills", { name, icon, prompt: p, needs_input });
+  chatState.skills = await api("GET", "/api/skills");
+  renderSkillRow();
+  toast(`已添加技能「${name}」`);
+}
+
+async function newSessionChat() {
+  const c = await api("POST", "/api/chats", { candidate_id: chatState.candidateId || null });
+  chatState.sessionId = c.id;
+  chatState.pendingSkill = null;
+  if ($("#chPend")) $("#chPend").innerHTML = "";
+  renderThread(c.messages);
+  updateChatCtx({ pct: 0, rounds: 0 });
+}
+
+async function loadChat() {
+  const c = await api("GET", `/api/chats/${chatState.sessionId}`);
+  renderThread(c.messages);
+  updateChatCtx(c.usage);
+}
+
+function renderThread(messages) {
+  const t = $("#chThread");
+  if (!t) return;
+  if (!messages.length) {
+    const c = chatState.candidateId ? candById(chatState.candidateId) : null;
+    t.innerHTML = `<div class="cmsg assistant"><div class="who">AI 助手</div><div class="b">${
+      c ? `已载入 <b>${esc(c.name)}</b> 的档案 👋 点上方技能，或直接问我关于 TA 的任何问题。` : "你好 👋 我是你的猎头 AI 助手。可在左上角载入某位候选人的档案，或直接问我。"
+    }</div></div>`;
+    return;
+  }
+  t.innerHTML = messages.map(chatBubble).join("");
+  t.scrollTop = t.scrollHeight;
+}
+
+function updateChatCtx(usage) {
+  const pct = usage.pct || 0;
+  if ($("#chPct")) $("#chPct").textContent = pct + "%";
+  const bar = $("#chBar");
+  if (bar) { bar.querySelector("i").style.width = pct + "%"; bar.classList.toggle("warn", pct > 60); }
+  if ($("#chBadges"))
+    $("#chBadges").innerHTML = `📄 ${chatState.candidateId ? "档案已载入" : "通用"} · 🕐 第 ${(usage.rounds || 0) + 1} 轮${
+      pct > 60 ? ' · <b style="color:var(--amber)">建议开新会话</b>' : ""
+    }`;
+}
+
+async function sendChat(opts = {}) {
+  const input = $("#chInput");
+  const text = (opts.text !== undefined ? opts.text : input.value).trim();
+  const skill_id = opts.skill_id || chatState.pendingSkill;
+  if (!text && !skill_id) return;
+
+  input.value = ""; input.style.height = "auto";
+  chatState.pendingSkill = null;
+  if ($("#chPend")) $("#chPend").innerHTML = "";
+  input.placeholder = "问点什么，或点上方技能…";
+  document.querySelectorAll(".skillchip.active").forEach((c) => c.classList.remove("active"));
+
+  const t = $("#chThread");
+  const skill = skill_id ? chatState.skills.find((s) => s.id === skill_id) : null;
+  const userDisplay = skill ? `${skill.icon} ${skill.name}${text ? "：" + text : ""}` : text;
+  if (t.querySelector(".cmsg.assistant .b") && t.children.length === 1 && !chatState.sessionMsgs) t.innerHTML = "";
+  t.insertAdjacentHTML("beforeend", chatBubble({ role: "user", content: userDisplay }));
+  t.insertAdjacentHTML("beforeend", `<div class="cmsg assistant" id="chTyping"><div class="who">AI 助手</div><div class="b"><span class="typing3"><i></i><i></i><i></i></span></div></div>`);
+  t.scrollTop = t.scrollHeight;
+
+  try {
+    const r = await api("POST", `/api/chats/${chatState.sessionId}/message`, { text, skill_id });
+    renderThread(r.messages);
+    updateChatCtx(r.usage);
+  } catch (e) {
+    const ty = $("#chTyping"); if (ty) ty.remove();
+    toast("出错：" + e.message);
+  }
+}
 
 // ---- JD analysis ----
 function viewJD(root) {
