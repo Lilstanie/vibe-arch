@@ -60,6 +60,10 @@ function renderChrome() {
   $("#navRemCount").textContent = dueCount;
   $("#providerName").textContent = S.meta.provider === "mock" ? "离线模拟" : S.meta.provider;
   $("#providerBox").classList.toggle("live", S.meta.provider !== "mock");
+  const fs = S.meta.feishu || { mode: "dry-run", live: false };
+  $("#feishuMode").textContent = fs.live ? "已连接" : "dry-run";
+  $("#feishuPill").classList.toggle("live", !!fs.live);
+  $("#feishuPill").title = fs.hint || "";
 }
 
 // ---------- router ----------
@@ -323,6 +327,11 @@ function drawCandidateBody(id) {
         <button class="btn sm" id="saveNote">保存备注</button>
         <button class="btn sm" id="addRem">＋ 加跟进提醒</button>
       </div>
+    </div>
+
+    <div class="sect">
+      <div class="st"><span class="fs" style="width:15px;height:15px;border-radius:50%;background:#3370ff;color:#fff;font-size:9px;display:inline-flex;align-items:center;justify-content:center">飞</span> 飞书同步 <button class="btn sm" id="syncFeishu" style="margin-left:auto">↻ 同步到飞书</button></div>
+      <div id="feishuBox">${renderFeishu(c)}</div>
     </div>`;
 
   $("#stageSel").onchange = async (e) => {
@@ -363,6 +372,23 @@ function drawCandidateBody(id) {
     await refresh();
     toast("已加入跟进提醒 ⏰");
   };
+  $("#syncFeishu").onclick = async () => {
+    $("#feishuBox").innerHTML = '<span class="spin"></span> <span class="muted small">正在写入飞书多维表格…</span>';
+    try {
+      await api("POST", `/api/candidates/${id}/sync`);
+      await refresh();
+      $("#feishuBox").innerHTML = renderFeishu(candById(id));
+      toast("已同步到飞书多维表格 ✓", true);
+    } catch (e) { $("#feishuBox").innerHTML = `<div class="empty small">失败：${esc(e.message)}</div>`; }
+  };
+}
+function renderFeishu(c) {
+  const f = c.feishu;
+  if (!f || f.error) return `<div class="synced"><span class="fs">飞</span><div>${f && f.error ? "上次同步失败：" + esc(f.error) : "尚未同步。点右上角「同步到飞书」写入候选人库(Table 1)与简历库(Table 2)。"}</div></div>`;
+  return `<div class="synced"><span class="fs">飞</span><div>
+    已写入飞书（<b>${esc(f.mode)}</b>）· 候选人记录 <code>${esc(f.candidate_record_id || "-")}</code>${f.resume_record_id ? ` · 简历记录 <code>${esc(f.resume_record_id)}</code>` : ""}
+    <div class="small muted">最近同步 ${new Date(f.last_synced_at).toLocaleString("zh-CN")}${f.mode === "dry-run" ? " · dry-run 未配置凭证时仅记录待写内容" : ""}</div>
+  </div></div>`;
 }
 function renderMatch(m) {
   const rl = m.red_line_hits.map((h) => `<div class="li"><span class="b"><span class="pill ${h.status}">${h.status === "pass" ? "通过" : h.status === "warn" ? "待确认" : "不符"}</span></span><div>${esc(h.rule)}${h.note ? ` <span class="muted small">— ${esc(h.note)}</span>` : ""}</div></div>`).join("");
@@ -415,9 +441,10 @@ function viewScreen(root) {
           job_id: $("#scrJob").value, name: e.name, title: e.current_title, company: e.current_company,
           years: e.years, education: e.education, expected_salary: e.expected_salary,
           skills: e.skills, highlights: e.highlights, resume_text: $("#scrText").value,
+          screen: { preview_verdict: res.preview_verdict, needs_human: res.needs_human },
         });
         await refresh();
-        toast("已入库到人才库（看板 · 待联系）✓", true);
+        toast("已入库人才库并同步飞书（看板 · 待联系）✓", true);
       };
     } catch (err) { box.innerHTML = `<div class="empty">失败：${esc(err.message)}</div>`; }
   };

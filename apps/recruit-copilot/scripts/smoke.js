@@ -53,6 +53,23 @@ const run = async () => {
   ok("summarize_call + auto reminders", call.status === 201 && call.data.reminders_created.length >= 1,
      `reminders=${call.data.reminders_created.length}`);
 
+  // ---- Feishu integration ----
+  const fst = await j("GET", "/api/feishu/status");
+  ok("feishu status", ["live", "dry-run"].includes(fst.data.mode), `mode=${fst.data.mode}`);
+
+  const newCand = await j("POST", "/api/candidates", {
+    job_id: jobId, name: "测试候选人", title: "后端", resume_text: "测试简历文本 Java",
+    screen: { preview_verdict: "maybe", needs_human: true },
+  });
+  ok("insert auto-syncs feishu", newCand.status === 201 && !!newCand.data.feishu?.candidate_record_id,
+     `rec=${newCand.data.feishu?.candidate_record_id}`);
+
+  const resync = await j("POST", `/api/candidates/${zw.id}/sync`);
+  ok("manual feishu sync", resync.status === 200 && !!resync.data.feishu?.candidate_record_id);
+
+  const flog = await j("GET", "/api/feishu/log");
+  ok("feishu sync log recorded", Array.isArray(flog.data) && flog.data.length >= 2, `entries=${flog.data.length}`);
+
   console.log(`\n${fail === 0 ? "ALL PASS" : "SOME FAILED"} — ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);
 };

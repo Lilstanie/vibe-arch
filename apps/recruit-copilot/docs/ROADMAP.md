@@ -11,11 +11,13 @@
 
 **特征**：AI 负责"想"，人负责"搬运"。稳、可控，但搬运环节费手。
 
-## 里程碑 1 —— 打通飞书（→ 80%）
+## 里程碑 1 —— 打通飞书（→ 80%）✅ 已完成（写入侧）
 
-- [ ] 接 `integrations/feishu.js` 真实写入：候选人 → Table 1，简历 → Table 2
-- [ ] 匹配分 / 初筛结论 / 通话纪要自动回写飞书
-- [ ] 双向：飞书里改阶段 → 同步回本系统
+- [x] 接 `integrations/feishu.js`：候选人 → Table 1，简历 → Table 2（幂等 upsert，带 record_id）
+- [x] 入库 / 匹配 / 阶段流转自动同步飞书；匹配分、初筛结论一并回写
+- [x] 可观测：同步日志 `GET /api/feishu/log`、状态 `GET /api/feishu/status`、抽屉内手动「同步到飞书」
+- [x] dry-run 兜底：无凭证时记录"将写入的内容"，配好 `FEISHU_APP_ID/SECRET/BITABLE_APP_TOKEN` 自动转真实写入
+- [ ] 双向回流：飞书里改阶段 → 同步回本系统（webhook/轮询，待做）
 - **价值**：结论自动沉淀，Jay 不再手抄进表格。见 [MCP-FEISHU.md](MCP-FEISHU.md)。
 
 ## 里程碑 2 —— Boss 半自动触达（Chrome 扩展）

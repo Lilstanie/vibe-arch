@@ -5,6 +5,7 @@ import { col, raw, logActivity, reset } from "./store.js";
 import { runAgent } from "./llm/agent.js";
 import { activeProvider } from "./llm/provider.js";
 import { STAGES, SEED } from "./seed.js";
+import * as feishu from "../integrations/feishu.js";
 
 const jobs = col("jobs");
 const candidates = col("candidates");
@@ -16,11 +17,39 @@ const jobAnalysisFor = (candidate) => {
   return job?.analysis || null;
 };
 
+// Push a candidate (and its resume) to Feishu Bitable, idempotently.
+// Non-fatal: a sync failure never breaks the core flow.
+async function syncToFeishu(candidateId, screen) {
+  const c = candidates.find(candidateId);
+  if (!c) return null;
+  const prev = c.feishu || {};
+  try {
+    const cand = await feishu.upsertCandidate(c, prev.candidate_record_id);
+    let resumeId = prev.resume_record_id;
+    if (c.resume_text) {
+      const r = await feishu.upsertResume(c, screen || c.screen, prev.resume_record_id);
+      resumeId = r.record_id;
+    }
+    const info = {
+      candidate_record_id: cand.record_id,
+      resume_record_id: resumeId,
+      mode: feishu.isLive() ? "live" : "dry-run",
+      last_synced_at: new Date().toISOString(),
+    };
+    candidates.update(c.id, { feishu: info });
+    logActivity({ type: "feishu", text: `同步「${c.name}」到飞书多维表格（${info.mode}）` });
+    return info;
+  } catch (e) {
+    logActivity({ type: "feishu", text: `飞书同步「${c.name}」失败：${String(e.message || e)}` });
+    return { error: String(e.message || e) };
+  }
+}
+
 export function registerRoutes(r) {
   r.get("/api/health", (req, res) => json(res, 200, { ok: true }));
 
   r.get("/api/meta", (req, res) =>
-    json(res, 200, { stages: STAGES, provider: activeProvider() })
+    json(res, 200, { stages: STAGES, provider: activeProvider(), feishu: feishu.getStatus() })
   );
 
   r.get("/api/state", (req, res) => json(res, 200, raw()));
@@ -28,6 +57,16 @@ export function registerRoutes(r) {
   r.post("/api/reset", (req, res) => {
     reset(SEED);
     json(res, 200, { ok: true });
+  });
+
+  // ---------- Feishu Bitable integration ----------
+  r.get("/api/feishu/status", (req, res) => json(res, 200, feishu.getStatus()));
+  r.get("/api/feishu/log", (req, res) => json(res, 200, feishu.getSyncLog()));
+  r.post("/api/candidates/:id/sync", async (req, res, { params }) => {
+    const c = candidates.find(params.id);
+    if (!c) return json(res, 404, { error: "not found" });
+    const info = await syncToFeishu(c.id);
+    json(res, 200, { feishu: info, status: feishu.getStatus() });
   });
 
   // ---------- Jobs / JD ----------
@@ -85,10 +124,12 @@ export function registerRoutes(r) {
       resume_text: body.resume_text || "",
       stage: body.stage || "sourced",
       match: null,
+      screen: body.screen || null,
       notes: body.notes || "",
     });
     logActivity({ type: "candidate", text: `新增候选人「${c.name}」入库` });
-    json(res, 201, c);
+    await syncToFeishu(c.id, body.screen);
+    json(res, 201, candidates.find(c.id));
   });
 
   r.patch("/api/candidates/:id", (req, res, { params, body }) => {
@@ -97,12 +138,13 @@ export function registerRoutes(r) {
   });
 
   // kanban stage move
-  r.post("/api/candidates/:id/stage", (req, res, { params, body }) => {
+  r.post("/api/candidates/:id/stage", async (req, res, { params, body }) => {
     const c = candidates.find(params.id);
     if (!c) return json(res, 404, { error: "not found" });
-    const updated = candidates.update(c.id, { stage: body.stage });
+    candidates.update(c.id, { stage: body.stage });
     logActivity({ type: "stage", text: `「${c.name}」移动到「${STAGES.find((s) => s.key === body.stage)?.label || body.stage}」` });
-    json(res, 200, updated);
+    await syncToFeishu(c.id);
+    json(res, 200, candidates.find(c.id));
   });
 
   // candidate vs job match (AI task #2)
@@ -123,6 +165,7 @@ export function registerRoutes(r) {
       const out = await runAgent("match_candidate", { jd_analysis: analysis, candidate: c });
       candidates.update(c.id, { match: out.data });
       logActivity({ type: "ai", text: `AI 匹配「${c.name}」→ ${out.data.score}分 / ${out.data.verdict}` });
+      await syncToFeishu(c.id); // push updated 匹配分 to Bitable
       json(res, 200, { candidate: candidates.find(c.id), meta: { provider: out.provider, ms: out.ms } });
     } catch (e) {
       json(res, 502, { error: String(e.message || e), errors: e.errors });
