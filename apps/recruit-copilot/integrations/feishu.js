@@ -26,6 +26,34 @@ function record(entry) {
   _log.unshift({ at: new Date().toISOString(), mode: LIVE ? "live" : "dry-run", ...entry });
   if (_log.length > 100) _log.pop();
 }
+
+// ---- simulated remote (dry-run only) ----
+// In dry-run there is no real Bitable, so we keep the "remote" state here to
+// make the bidirectional (Feishu -> local) pull path exercisable and testable.
+// In live mode this map is unused; pull reads the real records instead.
+const _remote = new Map(); // record_id -> fields
+function rememberRemote(rid, fields) {
+  _remote.set(rid, { ...(_remote.get(rid) || {}), ...fields });
+}
+export function simulateRemoteEdit(rid, patch) {
+  if (!rid) return;
+  rememberRemote(rid, patch);
+  record({ table: "(remote)", op: "remote-edit", label: "模拟飞书侧编辑", fields: patch, record_id: rid, ok: true });
+}
+// read the current remote fields of one record (real GET in live, memory in dry-run)
+export async function getRemoteFields(rid) {
+  if (!rid) return null;
+  if (LIVE) {
+    try {
+      const appToken = env.FEISHU_BITABLE_APP_TOKEN;
+      const data = await apiCall("GET", `${BASE}/bitable/v1/apps/${appToken}/tables/${TABLE_CAND()}/records/${rid}`);
+      return data.record?.fields || null;
+    } catch {
+      return null;
+    }
+  }
+  return _remote.get(rid) || null;
+}
 export function getSyncLog() {
   return _log;
 }
@@ -75,6 +103,7 @@ async function writeRecord(tableId, fields, recordId, label) {
   const op = recordId ? "update" : "create";
   if (!LIVE) {
     const rid = recordId || "dry_" + crypto.randomBytes(4).toString("hex");
+    if (tableId === TABLE_CAND()) rememberRemote(rid, fields); // keep simulated remote in sync
     record({ table: tableId, op, label, fields, record_id: rid, ok: true });
     return { record_id: rid };
   }
@@ -105,7 +134,7 @@ function candidateFields(c) {
     城市: c.city || "",
     经验: c.years || "",
     学历: c.education || "",
-    阶段: c.stage || "",
+    阶段: c.stage_label || c.stage || "",
     匹配分: c.match?.score ?? null,
     匹配结论: c.match?.verdict || "",
     技能: (c.skills || []).join("、"),

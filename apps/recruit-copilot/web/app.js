@@ -406,7 +406,12 @@ function drawCandidateBody(id) {
     </div>
 
     <div class="sect">
-      <div class="st"><span class="fs" style="width:15px;height:15px;border-radius:50%;background:#3370ff;color:#fff;font-size:9px;display:inline-flex;align-items:center;justify-content:center">飞</span> 飞书同步 <button class="btn sm" id="syncFeishu" style="margin-left:auto">↻ 同步到飞书</button></div>
+      <div class="st"><span class="fs" style="width:15px;height:15px;border-radius:50%;background:#3370ff;color:#fff;font-size:9px;display:inline-flex;align-items:center;justify-content:center">飞</span> 飞书同步
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn sm" id="simFeishu" title="演示：模拟有人在飞书里把 TA 推进一个阶段，再回流">🧪 模拟回流</button>
+          <button class="btn sm" id="syncFeishu">↻ 同步到飞书</button>
+        </span>
+      </div>
       <div id="feishuBox">${renderFeishu(c)}</div>
     </div>`;
 
@@ -456,6 +461,20 @@ function drawCandidateBody(id) {
       $("#feishuBox").innerHTML = renderFeishu(candById(id));
       toast("已同步到飞书多维表格 ✓", true);
     } catch (e) { $("#feishuBox").innerHTML = `<div class="empty small">失败：${esc(e.message)}</div>`; }
+  };
+  $("#simFeishu").onclick = async () => {
+    const cur = candById(id);
+    if (!cur.feishu?.candidate_record_id) { await api("POST", `/api/candidates/${id}/sync`); await refresh(); }
+    const stages = S.meta.stages.map((s) => s.key);
+    const idx = stages.indexOf(candById(id).stage);
+    const next = stages[Math.min(idx + 1, stages.length - 2)]; // advance one (skip 淘汰)
+    try {
+      await api("POST", "/api/feishu/simulate-remote-edit", { candidate_id: id, stage: next });
+      const r = await api("POST", "/api/feishu/pull");
+      await refresh();
+      drawCandidateBody(id);
+      toast(r.count ? `飞书侧改为「${stageLabel(next)}」→ 已回流 ✓` : "无变化", true);
+    } catch (e) { toast("模拟失败：" + e.message); }
   };
 }
 function renderFeishu(c) {
@@ -624,6 +643,12 @@ $("#resetBtn").onclick = async () => {
   await refresh();
   router();
   toast("已重置示例数据");
+};
+$("#pullFeishuBtn").onclick = async () => {
+  const r = await api("POST", "/api/feishu/pull");
+  await refresh();
+  router();
+  toast(r.count ? `已从飞书回流 ${r.count} 条改动 ✓` : "飞书侧无新改动", true);
 };
 
 // ---------- boot ----------

@@ -70,6 +70,17 @@ const run = async () => {
   const flog = await j("GET", "/api/feishu/log");
   ok("feishu sync log recorded", Array.isArray(flog.data) && flog.data.length >= 2, `entries=${flog.data.length}`);
 
+  // ---- Feishu bidirectional (回流) ----
+  await j("POST", "/api/feishu/simulate-remote-edit", { candidate_id: zw.id, stage: "offer" });
+  const pull = await j("POST", "/api/feishu/pull");
+  const zwNow = (await j("GET", `/api/candidates/${zw.id}`)).data;
+  ok("feishu bidirectional pull", pull.data.count >= 1 && zwNow.stage === "offer", `applied=${pull.data.count}, stage=${zwNow.stage}`);
+
+  // ---- Boss extension one-call outreach ----
+  const out = await j("POST", "/api/outreach", { name: "张伟", kind: "opener" });
+  ok("extension outreach", out.status === 200 && out.data.variants.length >= 1 && !!out.data.candidate.match,
+     `variants=${out.data.variants?.length}, score=${out.data.candidate?.match?.score}`);
+
   // ---- Smart sourcing ----
   const src = await j("POST", `/api/jobs/${jobId}/sourcing`);
   ok("smart_sourcing", src.status === 200 && src.data.job.sourcing.ranked.length >= 1,

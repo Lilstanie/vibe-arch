@@ -23,8 +23,9 @@ async function syncToFeishu(candidateId, screen) {
   const c = candidates.find(candidateId);
   if (!c) return null;
   const prev = c.feishu || {};
+  const stage_label = STAGES.find((s) => s.key === c.stage)?.label || c.stage;
   try {
-    const cand = await feishu.upsertCandidate(c, prev.candidate_record_id);
+    const cand = await feishu.upsertCandidate({ ...c, stage_label }, prev.candidate_record_id);
     let resumeId = prev.resume_record_id;
     if (c.resume_text) {
       const r = await feishu.upsertResume(c, screen || c.screen, prev.resume_record_id);
@@ -67,6 +68,41 @@ export function registerRoutes(r) {
     if (!c) return json(res, 404, { error: "not found" });
     const info = await syncToFeishu(c.id);
     json(res, 200, { feishu: info, status: feishu.getStatus() });
+  });
+
+  // Bidirectional: pull changes made in Feishu (阶段/备注) back into local store.
+  r.post("/api/feishu/pull", async (req, res) => {
+    const applied = [];
+    for (const c of candidates.all()) {
+      const rid = c.feishu?.candidate_record_id;
+      if (!rid) continue;
+      const remote = await feishu.getRemoteFields(rid);
+      if (!remote) continue;
+      const patch = {};
+      if (remote["阶段"]) {
+        const key = STAGES.find((s) => s.label === remote["阶段"])?.key;
+        if (key && key !== c.stage) patch.stage = key;
+      }
+      if (remote["备注"] != null && remote["备注"] !== c.notes) patch.notes = remote["备注"];
+      if (Object.keys(patch).length) {
+        candidates.update(c.id, patch);
+        const note = patch.stage ? `阶段→${STAGES.find((s) => s.key === patch.stage).label}` : "";
+        applied.push({ id: c.id, name: c.name, ...patch });
+        logActivity({ type: "feishu", text: `从飞书回流「${c.name}」${note}${patch.notes ? " 备注更新" : ""}` });
+      }
+    }
+    json(res, 200, { applied, count: applied.length });
+  });
+
+  // Demo helper: emulate someone editing the candidate's 阶段 inside Feishu.
+  r.post("/api/feishu/simulate-remote-edit", (req, res, { body }) => {
+    const c = candidates.find(body.candidate_id);
+    if (!c) return json(res, 404, { error: "not found" });
+    const rid = c.feishu?.candidate_record_id;
+    if (!rid) return json(res, 400, { error: "尚未同步到飞书，无法模拟回流" });
+    const label = STAGES.find((s) => s.key === body.stage)?.label || body.stage;
+    feishu.simulateRemoteEdit(rid, { 阶段: label });
+    json(res, 200, { ok: true, remote_stage: label });
   });
 
   // ---------- Jobs / JD ----------
@@ -210,6 +246,36 @@ export function registerRoutes(r) {
       });
       logActivity({ type: "ai", text: `AI 为「${c.name}」生成${body.kind === "followup" ? "跟进" : "开场白"}话术` });
       json(res, 200, { ...out.data, meta: { provider: out.provider } });
+    } catch (e) {
+      json(res, 502, { error: String(e.message || e) });
+    }
+  });
+
+  // one-call outreach for the Boss extension: name -> ensured match + opener variants
+  r.post("/api/outreach", async (req, res, { body }) => {
+    const name = (body.name || "").trim();
+    const c = candidates.all().find((x) => x.name === name);
+    if (!c) return json(res, 404, { error: `候选人「${name}」还没入库，请先在工作台入库/初筛` });
+    try {
+      // ensure a match exists so the panel can show a score
+      if (!c.match) {
+        let analysis = jobAnalysisFor(c);
+        const job = jobs.find(c.job_id);
+        if (!analysis && job) {
+          const a = await runAgent("jd_analyze", { title: job.title, company: job.company, jd_text: job.jd_text });
+          jobs.update(job.id, { analysis: a.data });
+          analysis = a.data;
+        }
+        const m = await runAgent("match_candidate", { jd_analysis: analysis, candidate: c });
+        candidates.update(c.id, { match: m.data });
+      }
+      const msg = await runAgent("draft_message", {
+        candidate: candidates.find(c.id),
+        jd_analysis: jobAnalysisFor(c),
+        kind: body.kind || "opener",
+      });
+      logActivity({ type: "ai", text: `扩展为「${c.name}」生成${body.kind === "followup" ? "跟进" : "开场白"}（Boss 侧边栏）` });
+      json(res, 200, { candidate: candidates.find(c.id), variants: msg.data.variants, notes: msg.data.notes });
     } catch (e) {
       json(res, 502, { error: String(e.message || e) });
     }
