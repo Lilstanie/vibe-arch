@@ -1,11 +1,15 @@
 // API handlers: wires HTTP routes to the store and the stateless AI agents.
 
 import { json } from "./router.js";
-import { col, raw, logActivity, reset } from "./store.js";
+import { col, raw, logActivity, reset, now } from "./store.js";
 import { runAgent } from "./llm/agent.js";
 import { activeProvider } from "./llm/provider.js";
 import { STAGES, SEED } from "./seed.js";
 import * as feishu from "../integrations/feishu.js";
+import { followupSuggestions, activationCandidates } from "./rules.js";
+
+const hasOpenReminder = (candId, source) =>
+  col("reminders").all().some((r) => !r.done && r.candidate_id === candId && r.source === source);
 
 const jobs = col("jobs");
 const candidates = col("candidates");
@@ -85,6 +89,7 @@ export function registerRoutes(r) {
       }
       if (remote["备注"] != null && remote["备注"] !== c.notes) patch.notes = remote["备注"];
       if (Object.keys(patch).length) {
+        if (patch.stage) patch.stage_since = now();
         candidates.update(c.id, patch);
         const note = patch.stage ? `阶段→${STAGES.find((s) => s.key === patch.stage).label}` : "";
         applied.push({ id: c.id, name: c.name, ...patch });
@@ -202,7 +207,7 @@ export function registerRoutes(r) {
   r.post("/api/candidates/:id/stage", async (req, res, { params, body }) => {
     const c = candidates.find(params.id);
     if (!c) return json(res, 404, { error: "not found" });
-    candidates.update(c.id, { stage: body.stage });
+    candidates.update(c.id, { stage: body.stage, stage_since: now() });
     logActivity({ type: "stage", text: `「${c.name}」移动到「${STAGES.find((s) => s.key === body.stage)?.label || body.stage}」` });
     await syncToFeishu(c.id);
     json(res, 200, candidates.find(c.id));
@@ -313,6 +318,60 @@ export function registerRoutes(r) {
   r.post("/api/reminders/:id/done", (req, res, { params }) => {
     const rem = reminders.update(params.id, { done: true });
     return rem ? json(res, 200, rem) : json(res, 404, { error: "not found" });
+  });
+
+  // ---------- Proactive follow-up & talent-pool activation (Milestone 4) ----------
+  // Rule-based follow-up suggestions (preview, no writes).
+  r.get("/api/activation/followups", (req, res) =>
+    json(res, 200, followupSuggestions(candidates.all()))
+  );
+
+  // Turn selected (or all) suggestions into reminders, deduped per (candidate, rule).
+  r.post("/api/activation/followups/apply", (req, res, { body }) => {
+    const all = followupSuggestions(candidates.all());
+    const wanted =
+      body.items && body.items.length ? all.filter((s) => body.items.includes(`${s.rule}:${s.candidate_id}`)) : all;
+    const created = [];
+    for (const s of wanted) {
+      const source = "rule:" + s.rule;
+      if (hasOpenReminder(s.candidate_id, source)) continue;
+      created.push(
+        reminders.insert({
+          candidate_id: s.candidate_id, text: s.message, due: hintToDue(s.due_hint),
+          due_hint: s.due_hint, done: false, source,
+        })
+      );
+    }
+    logActivity({ type: "activation", text: `分阶段跟进：新增 ${created.length} 条提醒` });
+    json(res, 201, { created, count: created.length });
+  });
+
+  // Dormant, re-engageable candidates for a still-open job.
+  r.get("/api/jobs/:id/activation", (req, res, { params }) => {
+    const job = jobs.find(params.id);
+    if (!job) return json(res, 404, { error: "job not found" });
+    json(res, 200, activationCandidates(job, candidates.all()));
+  });
+
+  // Batch-activate selected pool candidates (creates reminders, deduped per job).
+  r.post("/api/jobs/:id/activate", (req, res, { params, body }) => {
+    const job = jobs.find(params.id);
+    if (!job) return json(res, 404, { error: "job not found" });
+    const source = "activation:" + job.id;
+    const created = [];
+    for (const cid of body.candidate_ids || []) {
+      const c = candidates.find(cid);
+      if (!c || hasOpenReminder(cid, source)) continue;
+      created.push(
+        reminders.insert({
+          candidate_id: cid,
+          text: `人才池激活：重新联系「${c.name}」（岗位「${job.title}」仍在招）`,
+          due: hintToDue("明天"), due_hint: "明天", done: false, source,
+        })
+      );
+    }
+    logActivity({ type: "activation", text: `人才池激活「${job.title}」：新增 ${created.length} 条` });
+    json(res, 201, { created, count: created.length });
   });
 
   // ---------- Calls (phone -> text -> summary + auto tasks) (AI task #5) ----------

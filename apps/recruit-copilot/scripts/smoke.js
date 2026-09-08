@@ -81,6 +81,18 @@ const run = async () => {
   ok("extension outreach", out.status === 200 && out.data.variants.length >= 1 && !!out.data.candidate.match,
      `variants=${out.data.variants?.length}, score=${out.data.candidate?.match?.score}`);
 
+  // ---- Proactive follow-up & pool activation ----
+  const fu = await j("GET", "/api/activation/followups");
+  ok("followup rules fire", Array.isArray(fu.data) && fu.data.length >= 1, `suggestions=${fu.data.length}`);
+  const apply1 = await j("POST", "/api/activation/followups/apply", {});
+  ok("apply followups", apply1.status === 201 && apply1.data.count >= 1, `created=${apply1.data.count}`);
+  const apply2 = await j("POST", "/api/activation/followups/apply", {});
+  ok("followup dedupe", apply2.data.count === 0, `second=${apply2.data.count}`);
+  const pool = await j("GET", `/api/jobs/${jobId}/activation`);
+  ok("pool activation list", Array.isArray(pool.data) && pool.data.length >= 1, `dormant=${pool.data.length}`);
+  const act = await j("POST", `/api/jobs/${jobId}/activate`, { candidate_ids: pool.data.map((x) => x.candidate_id) });
+  ok("activate pool", act.status === 201 && act.data.count >= 1, `activated=${act.data.count}`);
+
   // ---- Smart sourcing ----
   const src = await j("POST", `/api/jobs/${jobId}/sourcing`);
   ok("smart_sourcing", src.status === 200 && src.data.job.sourcing.ranked.length >= 1,

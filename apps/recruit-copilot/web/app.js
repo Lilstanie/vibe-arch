@@ -46,7 +46,7 @@ function copyText(t) {
 const fmtWhen = (iso) => {
   const d = new Date(iso), now = new Date();
   const diff = (d - now) / 3600e3;
-  const t = d.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const t = d.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ });
   if (diff < 0) return `已过期 · ${t}`;
   if (diff < 24) return `${Math.round(diff)}小时后 · ${t}`;
   return t;
@@ -64,7 +64,10 @@ function renderChrome() {
   $("#feishuMode").textContent = fs.live ? "已连接" : "dry-run";
   $("#feishuPill").classList.toggle("live", !!fs.live);
   $("#feishuPill").title = fs.hint || "";
+  // follow-up badge (non-blocking)
+  api("GET", "/api/activation/followups").then((fu) => { const el = $("#navFuCount"); if (el) el.textContent = fu.length; }).catch(() => {});
 }
+const TZ = "Asia/Shanghai";
 
 // ---------- router ----------
 const routes = {
@@ -73,6 +76,7 @@ const routes = {
   sourcing: { title: "智能寻访", sub: "综合候选人池 + 反馈，优化关键词并排序打招呼优先级", render: viewSourcing },
   kanban: { title: "人才看板", sub: "拖拽卡片推进候选人阶段", render: viewKanban },
   screen: { title: "简历初筛", sub: "AI 抽取字段 + 初筛判断，不确定转人工", render: viewScreen },
+  activation: { title: "主动跟进", sub: "分阶段跟进规则 + 人才池激活，别让候选人凉掉", render: viewActivation },
   reminders: { title: "跟进提醒", sub: "分阶段主动跟进与人才池激活", render: viewReminders },
   calls: { title: "通话纪要", sub: "电话转写 → 纪要 + 自动生成跟进任务", render: viewCalls },
 };
@@ -542,6 +546,75 @@ function viewScreen(root) {
         toast("已入库人才库并同步飞书（看板 · 待联系）✓", true);
       };
     } catch (err) { box.innerHTML = `<div class="empty">失败：${esc(err.message)}</div>`; }
+  };
+}
+
+// ---- Proactive follow-up & pool activation ----
+async function viewActivation(root) {
+  root.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <h3>🔔 分阶段跟进建议 <button class="btn primary sm" id="fuApplyAll" style="margin-left:auto">＋ 全部加入提醒</button></h3>
+      <div class="small muted" style="margin:-4px 0 12px">按「阶段 + 停留天数」规则扫描：谁该跟进、该做什么、什么时候。加入后到「跟进提醒」管理。</div>
+      <div id="fuList"><span class="spin"></span> <span class="muted small">扫描中…</span></div>
+    </div>
+    <div class="card">
+      <h3>🧲 人才池激活</h3>
+      <div class="small muted" style="margin:-4px 0 12px">岗位仍在招时，把早期/沉睡但匹配的老候选人批量捞回来重新联系。</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <select id="poolJob" style="width:auto;min-width:220px">${S.state.jobs.map((j) => `<option value="${j.id}">${esc(j.title)}</option>`).join("")}</select>
+        <button class="btn" id="poolScan">扫描沉睡候选人</button>
+      </div>
+      <div id="poolList"></div>
+    </div>`;
+
+  await loadFollowups();
+  $("#fuApplyAll").onclick = async () => {
+    const r = await api("POST", "/api/activation/followups/apply", {});
+    await refresh();
+    await loadFollowups();
+    toast(r.count ? `已加入 ${r.count} 条跟进提醒 ⏰` : "没有新的可加入（都已存在）");
+  };
+  $("#poolScan").onclick = () => scanPool($("#poolJob").value);
+  scanPool($("#poolJob").value);
+}
+async function loadFollowups() {
+  const list = await api("GET", "/api/activation/followups");
+  $("#navFuCount").textContent = list.length;
+  const box = $("#fuList");
+  if (!list.length) { box.innerHTML = '<div class="empty small">当前没有到期的跟进建议 🎉</div>'; return; }
+  box.innerHTML = list.map((s) => `
+    <div class="reminder">
+      <div style="flex:1"><span class="pill amber">${esc(s.rule_label)}</span> <b style="margin-left:4px">${esc(s.name)}</b>
+        <div class="small muted">${esc(s.message)}</div></div>
+      <div class="when">停留 ${s.days_in_stage} 天 · ${esc(s.due_hint)}</div>
+      <button class="btn sm" data-fu="${esc(s.rule)}:${esc(s.candidate_id)}">加入</button>
+    </div>`).join("");
+  box.querySelectorAll("[data-fu]").forEach((b) => (b.onclick = async () => {
+    const r = await api("POST", "/api/activation/followups/apply", { items: [b.getAttribute("data-fu")] });
+    await refresh();
+    await loadFollowups();
+    toast(r.count ? "已加入跟进提醒 ⏰" : "该提醒已存在");
+  }));
+}
+async function scanPool(jobId) {
+  const box = $("#poolList");
+  box.innerHTML = '<span class="spin"></span> <span class="muted small">扫描中…</span>';
+  const list = await api("GET", `/api/jobs/${jobId}/activation`);
+  if (!list.length) { box.innerHTML = '<div class="empty small">该岗位下没有可激活的早期候选人</div>'; return; }
+  box.innerHTML = list.map((c) => `
+    <div class="reminder">
+      <input type="checkbox" class="poolChk" data-id="${esc(c.candidate_id)}" checked style="width:16px;height:16px" />
+      <div style="flex:1"><b>${esc(c.name)}</b> <span class="pill">${stageLabel(c.stage)}</span>
+        <div class="small muted">${esc(c.reason)} · 停留 ${c.days_in_stage} 天</div></div>
+      ${c.fit != null ? `<div class="when" style="font-weight:700;color:#4f46e5">${c.fit}</div>` : ""}
+    </div>`).join("") +
+    `<button class="btn primary" id="poolActivate" style="margin-top:8px">🧲 激活选中（生成跟进提醒）</button>`;
+  $("#poolActivate").onclick = async () => {
+    const ids = [...box.querySelectorAll(".poolChk:checked")].map((x) => x.getAttribute("data-id"));
+    if (!ids.length) return toast("请先勾选候选人");
+    const r = await api("POST", `/api/jobs/${jobId}/activate`, { candidate_ids: ids });
+    await refresh();
+    toast(r.count ? `已激活 ${r.count} 人，生成跟进提醒 ⏰` : "选中的都已在跟进中");
   };
 }
 
