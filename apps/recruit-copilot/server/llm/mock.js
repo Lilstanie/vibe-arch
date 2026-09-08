@@ -97,6 +97,49 @@ export const MOCK = {
         };
   },
 
+  smart_sourcing: (input) => {
+    const pool = input.candidates || [];
+    const advanced = ["interview", "offer", "onboard"];
+    // rank: advanced-stage & higher match first; penalize weak signals
+    const scoreOf = (c) => {
+      let s = c.match?.score ?? 55;
+      if (advanced.includes(c.stage)) s += 12;
+      if ((c.education || "").includes("大专")) s -= 15;
+      if ((c.company || "").includes("外包")) s -= 12;
+      if ((c.skills || []).includes("Kafka")) s += 6;
+      return Math.max(0, Math.min(100, s));
+    };
+    const ranked = [...pool]
+      .map((c) => {
+        const s = scoreOf(c);
+        return {
+          name: c.name,
+          score: s,
+          recommend: s >= 62,
+          reason:
+            s >= 75
+              ? `强信号：${advanced.includes(c.stage) ? "已推进到" + c.stage + "，" : ""}${(c.highlights || [])[0] || "量化战绩过硬"}，优先打招呼`
+              : s >= 62
+              ? "中等匹配，可在高优先级之后触达"
+              : `弱信号：${(c.education || "").includes("大专") || (c.company || "").includes("外包") ? "履历偏基础/外包，" : ""}暂缓，把额度留给更高匹配的人`,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return {
+      ideal_profile: "大厂/交易系统背景、有量化高并发战绩（QPS/秒杀）、掌握 Kafka 或 RocketMQ、本科及以上的资深后端。",
+      refined_keywords: ["Java", "高并发", "秒杀", "Kafka", "交易系统", "分库分表", "稳定性", "SRE"],
+      refined_boolean: '(Java) AND (高并发 OR 秒杀 OR 交易) AND (Kafka OR RocketMQ) AND NOT (外包 OR 实习)',
+      exclude_signals: ["纯 CRUD / 业务堆功能", "外包/驻场背景", "无任何量化产出", "2 年内多段跳槽"],
+      ranked,
+      learned_from: [
+        "已进入面试的候选人普遍有 Kafka + 秒杀经验 → 把 Kafka/秒杀提到关键词前排",
+        "偏 CRUD、大专、外包背景的候选人多数未推进 → 加入排除信号",
+        input.feedback && input.feedback.length ? "已吸收 Jay 的纠偏反馈调整排序" : "可在结果上标注「这个不准」持续纠偏",
+      ],
+    };
+  },
+
   summarize_call: (input) => ({
     summary:
       "与候选人电话沟通约 12 分钟。对岗位方向（交易中台/高并发）有兴趣，认可技术挑战；" +

@@ -37,6 +37,7 @@ export ANTHROPIC_API_KEY=sk-ant-...   # 备选 provider = Claude
 | **匹配沟通** | `POST /api/candidates/:id/match`（匹配分 + 红线逐条检查）+ `/message`（开场白 / 跟进话术）。 |
 | **流程管理 / Kanban** | 候选人看板（拖拽推进阶段）+ 候选人详情抽屉 + 活动流审计。 |
 | **② 编辑好的信息发给 Boss** | 话术一键复制 → 半自动贴到 Boss；`extension/` 提供 Boss Chrome 扩展骨架（内容脚本，带每日打招呼限额守护）。 |
+| **最花时间 / best-ROI（智能寻访）** | `POST /api/jobs/:id/sourcing`：综合候选人池 + 结果 + Jay 反馈，产出优化关键词、排除信号、**打招呼优先级排序**（带纠偏反馈闭环）。 |
 | **简历初筛（自己 preview / 不确定喂 LLM）** | `POST /api/screen-resume`：抽字段 + 初筛判断，`needs_human=true` 时标记转人工。 |
 | **③ 主动跟进 / 人才池激活** | 提醒系统，支持「今晚 / 明天 / 本周末」自然语言 → 时间戳。 |
 | **电话转文字 → 纪要 + 任务** | `POST /api/calls`：转写 → 结构化纪要（意向/要点/顾虑）+ **自动生成带时间的跟进任务**。 |

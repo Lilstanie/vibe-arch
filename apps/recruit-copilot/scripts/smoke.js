@@ -70,6 +70,14 @@ const run = async () => {
   const flog = await j("GET", "/api/feishu/log");
   ok("feishu sync log recorded", Array.isArray(flog.data) && flog.data.length >= 2, `entries=${flog.data.length}`);
 
+  // ---- Smart sourcing ----
+  const src = await j("POST", `/api/jobs/${jobId}/sourcing`);
+  ok("smart_sourcing", src.status === 200 && src.data.job.sourcing.ranked.length >= 1,
+     `ranked=${src.data.job.sourcing.ranked.length}, kw=${src.data.job.sourcing.refined_keywords.length}`);
+  const src2 = await j("POST", `/api/jobs/${jobId}/sourcing`, { feedback: "候选人「王芳」判断不准：请降低优先级" });
+  ok("sourcing feedback loop", src2.status === 200 && src2.data.job.sourcing_feedback.length >= 1,
+     `feedback=${src2.data.job.sourcing_feedback.length}`);
+
   console.log(`\n${fail === 0 ? "ALL PASS" : "SOME FAILED"} — ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);
 };

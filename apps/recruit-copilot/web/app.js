@@ -70,6 +70,7 @@ function renderChrome() {
 const routes = {
   dashboard: { title: "概览", sub: "今日一览与近期动态", render: viewDashboard },
   jd: { title: "岗位分析", sub: "把 JD 拆成可执行的寻访策略", render: viewJD },
+  sourcing: { title: "智能寻访", sub: "综合候选人池 + 反馈，优化关键词并排序打招呼优先级", render: viewSourcing },
   kanban: { title: "人才看板", sub: "拖拽卡片推进候选人阶段", render: viewKanban },
   screen: { title: "简历初筛", sub: "AI 抽取字段 + 初筛判断，不确定转人工", render: viewScreen },
   reminders: { title: "跟进提醒", sub: "分阶段主动跟进与人才池激活", render: viewReminders },
@@ -214,6 +215,81 @@ function renderAnalysis(a) {
     ${a.salary_read ? `<div class="sect"><div class="st">💰 薪资解读</div><div class="small">${esc(a.salary_read)}</div></div>` : ""}
     ${a.risk_notes && a.risk_notes.length ? `<div class="sect"><div class="st">⚠ 风险提示</div>${a.risk_notes.map((r) => `<div class="li"><span class="b">•</span><div>${esc(r)}</div></div>`).join("")}</div>` : ""}
   `;
+}
+
+// ---- Smart sourcing ----
+function viewSourcing(root) {
+  const jobs = S.state.jobs;
+  root.innerHTML = `
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label class="fl" style="margin:0">岗位</label>
+        <select id="srcJob" style="width:auto;min-width:220px">${jobs.map((j) => `<option value="${j.id}">${esc(j.title)}</option>`).join("")}</select>
+        <button class="btn primary" id="srcRun">🧭 运行智能寻访</button>
+        <span class="small muted">综合该岗位下 ${S.state.candidates.length} 位候选人的进展与结果，反推更准的搜索词并排序打招呼优先级。</span>
+      </div>
+    </div>
+    <div id="srcResult"></div>`;
+  $("#srcRun").onclick = () => runSourcing($("#srcJob").value);
+  const j = jobs.find((x) => x.sourcing);
+  if (j) { $("#srcJob").value = j.id; renderSourcing(j.id); }
+  else root.querySelector("#srcResult").innerHTML = '<div class="card"><div class="empty">选择岗位并运行，AI 会学习整个候选人池，产出优化关键词 + 排序短名单</div></div>';
+}
+async function runSourcing(jobId, feedback) {
+  const box = $("#srcResult");
+  box.innerHTML = '<div class="card"><span class="spin"></span> <span class="muted small">AI 正在学习候选人池、优化寻访策略…</span></div>';
+  try {
+    const res = await api("POST", `/api/jobs/${jobId}/sourcing`, feedback ? { feedback } : {});
+    await refresh();
+    renderSourcing(jobId);
+    toast(feedback ? "已吸收反馈，重新排序 ✓" : `寻访策略已更新（${res.meta.provider}）`);
+  } catch (e) { box.innerHTML = `<div class="card"><div class="empty">失败：${esc(e.message)}</div></div>`; }
+}
+function renderSourcing(jobId) {
+  const job = jobById(jobId);
+  const s = job.sourcing;
+  if (!s) return;
+  const orig = new Set((job.analysis?.search_keywords) || []);
+  const kw = s.refined_keywords.map((k) => `<span class="tag ${orig.has(k) ? "" : "hot"}" title="${orig.has(k) ? "原有" : "新增/提权"}">${esc(k)}</span>`).join("");
+  const ranked = s.ranked.map((r) => {
+    const c = S.state.candidates.find((x) => x.name === r.name);
+    return `<div class="reminder" style="${r.recommend ? "" : "opacity:.72"}">
+      <div style="width:34px;text-align:center"><div style="font-weight:800;font-size:16px;color:${r.recommend ? "#4f46e5" : "#9ca3af"}">${r.score}</div></div>
+      <div style="flex:1"><b>${esc(r.name)}</b> ${r.recommend ? '<span class="pill green">优先打招呼</span>' : '<span class="pill">暂缓</span>'}
+        <div class="small muted">${esc(r.reason)}</div></div>
+      ${c ? `<button class="btn sm" data-open="${c.id}">查看</button>` : ""}
+      <button class="btn sm" data-badfit="${esc(r.name)}">这个不准</button>
+    </div>`;
+  }).join("");
+
+  $("#srcResult").innerHTML = `
+    <div class="grid c2" style="align-items:start">
+      <div class="card">
+        <h3>🎯 理想候选人画像</h3>
+        <div class="small" style="margin-bottom:14px">${esc(s.ideal_profile)}</div>
+        <div class="st" style="font-size:11px">🔍 优化后关键词 <span class="muted" style="font-weight:400">（紫色=新增/提权）</span></div>
+        <div style="margin:6px 0 12px">${kw}</div>
+        <label class="fl">优化后布尔搜索串</label>
+        <div style="display:flex;gap:8px"><input readonly value="${esc(s.refined_boolean)}" /><button class="btn sm" data-copy="${esc(s.refined_boolean)}">复制</button></div>
+        <div class="st" style="font-size:11px;margin-top:14px">🚫 排除信号（负向筛选）</div>
+        ${s.exclude_signals.map((e) => `<div class="li"><span class="b">✗</span><div>${esc(e)}</div></div>`).join("")}
+        <div class="st" style="font-size:11px;margin-top:14px">💡 从候选人池学到的规律</div>
+        ${s.learned_from.map((l) => `<div class="li"><span class="b">•</span><div>${esc(l)}</div></div>`).join("")}
+      </div>
+      <div class="card">
+        <h3>📊 打招呼优先级排序 <span class="muted small" style="font-weight:400;margin-left:auto">额度有限，从上往下打</span></h3>
+        ${ranked}
+        <div class="small muted" style="margin-top:8px">点「这个不准」纠偏 → AI 吸收后重新排序（反馈会累积）。</div>
+      </div>
+    </div>`;
+
+  $("#srcResult").querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openCandidate(b.getAttribute("data-open"))));
+  $("#srcResult").querySelectorAll("[data-badfit]").forEach((b) => (b.onclick = async () => {
+    const name = b.getAttribute("data-badfit");
+    const why = prompt(`为什么「${name}」不准？（这条会作为纠偏反馈喂给 AI）`, "方向不符，请降低优先级");
+    if (!why) return;
+    runSourcing(jobId, `候选人「${name}」判断不准：${why}`);
+  }));
 }
 
 // ---- Kanban ----

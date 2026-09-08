@@ -101,6 +101,31 @@ export function registerRoutes(r) {
     }
   });
 
+  // Smart sourcing (AI task #6): learn from the whole pool + feedback → refined
+  // keywords, exclude signals, and a打招呼-priority ranked shortlist.
+  r.post("/api/jobs/:id/sourcing", async (req, res, { params, body }) => {
+    const job = jobs.find(params.id);
+    if (!job) return json(res, 404, { error: "job not found" });
+    try {
+      let analysis = job.analysis;
+      if (!analysis) {
+        const a = await runAgent("jd_analyze", { title: job.title, company: job.company, jd_text: job.jd_text });
+        jobs.update(job.id, { analysis: a.data });
+        analysis = a.data;
+      }
+      // accumulate Jay's corrections across runs
+      const feedback = [...(job.sourcing_feedback || [])];
+      if (body.feedback) feedback.push(body.feedback);
+      const pool = candidates.all().filter((c) => c.job_id === job.id);
+      const out = await runAgent("smart_sourcing", { jd_analysis: analysis, candidates: pool, feedback });
+      jobs.update(job.id, { sourcing: out.data, sourcing_feedback: feedback });
+      logActivity({ type: "ai", text: `智能寻访「${job.title}」→ 优化关键词 ${out.data.refined_keywords.length} 个、排序 ${out.data.ranked.length} 人` });
+      json(res, 200, { job: jobs.find(job.id), meta: { provider: out.provider, ms: out.ms } });
+    } catch (e) {
+      json(res, 502, { error: String(e.message || e), errors: e.errors });
+    }
+  });
+
   // ---------- Candidates ----------
   r.get("/api/candidates", (req, res) => json(res, 200, candidates.all()));
 

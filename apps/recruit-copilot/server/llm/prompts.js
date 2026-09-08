@@ -63,6 +63,25 @@ export const PROMPTS = {
       `输出 JSON，字段：variants(2条文案数组,每项{label,text}), notes(使用建议数组)。`,
   }),
 
+  smart_sourcing: (input) => ({
+    system:
+      "你是顶级的技术寻访策略顾问（sourcing strategist）。你的任务是：综合岗位策略 + 现有候选人池的进展与结果" +
+      "（谁进了面试/offer = 正向信号，谁被淘汰 = 负向信号）+ 猎头的纠偏反馈，反推出更精准的搜索词与筛选条件，" +
+      "并给出一份按优先级排序的候选人短名单——因为 Boss 每天打招呼有限额（约 20-30），额度要花在最可能成的人身上。" +
+      JSON_RULE,
+    user:
+      `岗位寻访策略(JSON)：\n${JSON.stringify(input.jd_analysis || {}, null, 2)}\n\n` +
+      `现有候选人池(JSON，含阶段 stage 与已有匹配 match)：\n${JSON.stringify(input.candidates || [], null, 2)}\n\n` +
+      (input.feedback && input.feedback.length
+        ? `猎头 Jay 的纠偏反馈（要吸收进策略）：\n${input.feedback.map((f) => `- ${f}`).join("\n")}\n\n`
+        : "") +
+      `输出 JSON，字段：ideal_profile(理想候选人画像一句话), ` +
+      `refined_keywords(在原关键词基础上优化后的搜索词数组，吸收池子里的成功/失败模式), ` +
+      `refined_boolean(优化后的布尔搜索串), exclude_signals(应排除的负向信号数组，如"纯CRUD/外包"), ` +
+      `ranked(按打招呼优先级排序的候选人数组,每项{name,score,recommend(bool),reason}), ` +
+      `learned_from(你从池子里学到的规律数组)。`,
+  }),
+
   summarize_call: (input) => ({
     system:
       "你是猎头电话沟通记录助手。把口语化的通话转写整理成结构化纪要，" +

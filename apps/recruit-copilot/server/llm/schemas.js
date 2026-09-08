@@ -123,6 +123,22 @@ export const SCHEMAS = {
     notes: s.arr(s.str(), { optional: true, default: [] }),
   }),
 
+  smart_sourcing: s.obj({
+    ideal_profile: s.str(),
+    refined_keywords: s.arr(s.str()),
+    refined_boolean: s.str(),
+    exclude_signals: s.arr(s.str()),
+    ranked: s.arr(
+      s.obj({
+        name: s.str(),
+        score: s.num({ min: 0, max: 100 }),
+        recommend: s.bool(),
+        reason: s.str(),
+      })
+    ),
+    learned_from: s.arr(s.str()),
+  }),
+
   summarize_call: s.obj({
     summary: s.str(),
     candidate_interest: s.enum(["high", "medium", "low", "unknown"]),
