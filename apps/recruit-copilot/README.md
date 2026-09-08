@@ -22,7 +22,9 @@ node scripts/smoke.js           # 另开一个终端跑端到端冒烟测试
 |---|---|---|
 | **产品展示页** | `http://localhost:5178/landing.html` | 落地页，并列展示两种形态（含实时预览） |
 | **Web 工作台** | `http://localhost:5178/` | 深度分析与管理中枢（SPA） |
-| **Chrome 扩展联调** | `http://localhost:5178/mock-boss.html` | 模拟 Boss 页 + 扩展侧边栏 |
+| **Chrome 扩展联调** | `http://localhost:5178/mock-boss.html` | 模拟 Boss 页 + 停靠的完整工作台侧边栏 |
+
+> **一体化**：扩展不是独立小挂件，而是把完整工作台（`/?embed=1`）以侧边栏 iframe 停靠在 Boss 右侧——同一套界面、同一个后端。Boss 页上打开的候选人会自动载入侧栏工作台。
 
 默认用 **离线 mock** 跑 AI；要接真实模型：
 

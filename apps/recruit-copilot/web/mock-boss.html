@@ -23,6 +23,10 @@
   .chatbar button{background:#00a6a7;color:#fff;border:none;border-radius:8px;padding:0 24px;font-weight:600;cursor:pointer;}
   .switcher{margin-top:16px;font-size:12px;color:#9ca3af;}
   .switcher a{color:#4f46e5;cursor:pointer;text-decoration:underline;margin-right:10px;}
+  /* when the Recruit Copilot workbench docks on the right, make room for it */
+  html.rc-docked .wrap{margin-left:0;margin-right:420px;transition:margin .2s;}
+  html.rc-docked .bar{padding-right:416px;}
+  html.rc-docked .chatbar{right:404px;}
 </style>
 </head>
 <body>

@@ -896,6 +896,16 @@ $("#pullFeishuBtn").onclick = async () => {
 window.addEventListener("hashchange", router);
 (async () => {
   await refresh();
-  if (!location.hash) location.hash = "#/dashboard";
+  // embedded (extension sidebar) mode: same app, compact layout
+  const params = new URLSearchParams(location.search);
+  const embed = params.get("embed") === "1" || window.self !== window.top;
+  if (embed) document.body.classList.add("embed");
+  // if the host page (Boss) tells us which candidate is open, focus them
+  const candName = params.get("candidate");
+  if (candName) {
+    const c = S.state.candidates.find((x) => x.name === candName);
+    if (c) { chatState.candidateId = c.id; if (!location.hash) location.hash = "#/chat"; }
+  }
+  if (!location.hash) location.hash = embed ? "#/chat" : "#/dashboard";
   router();
 })();

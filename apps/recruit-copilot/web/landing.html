@@ -75,6 +75,15 @@
   /* full iframe size; JS scales to fit the card width so nothing clips */
   .pv.ext iframe{width:1160px;height:800px;}
   .pv.web iframe{width:1200px;height:820px;}
+  .pv.one iframe{width:1360px;height:840px;}
+  .preview.big{max-width:1000px;margin:0 auto;box-shadow:0 1px 2px rgba(0,0,0,.03),0 24px 60px rgba(30,30,60,.12);border-radius:14px;}
+  .aspects{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1000px;margin:20px auto 0;}
+  @media(max-width:760px){.aspects{grid-template-columns:1fr;}}
+  .aspect{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;}
+  .aspect .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;margin-bottom:10px;}
+  .aspect .badge.ext{background:#e6f7f7;color:#00888a;}
+  .aspect .badge.web{background:var(--indigo-50);color:var(--indigo);}
+  .aspect p{color:var(--muted);font-size:13px;margin:0 0 14px;}
   .form-card .btn{align-self:flex-start;margin-top:auto;}
 
   .bridge{margin-top:22px;text-align:center;background:#fff;border:1px dashed var(--indigo-100);border-radius:14px;padding:16px 18px;color:var(--ink-2);font-size:13.5px;}
@@ -122,7 +131,7 @@
     <div class="wrap">
       <span class="tag">🎯 给猎头的 AI 工作台</span>
       <h1>在 Boss 上聊到<span class="g">更多、更准</span>的人</h1>
-      <p>JD 分析、候选人匹配、简历初筛、话术生成、通话纪要、主动跟进——一套 AI 大脑，两种形态：贴着 Boss 页面的浏览器扩展，和深度分析与管理的 Web 工作台。</p>
+      <p>JD 分析、候选人匹配、简历初筛、话术生成、通话纪要、主动跟进——<b>一套工作台，一份数据</b>。既能作为侧边栏直接嵌进 Boss 页面，也能全屏当独立 Web 用；同一套界面、同一个后端。</p>
       <div class="cta">
         <a class="btn primary" href="/">🖥️ 打开 Web 工作台</a>
         <a class="btn teal" href="/mock-boss.html">🧩 体验 Chrome 扩展</a>
@@ -139,46 +148,26 @@
   <section id="forms">
     <div class="wrap">
       <div class="sec-head">
-        <div class="k">Two Surfaces</div>
-        <h2>两种形态，一套大脑</h2>
-        <p>就地触达用扩展，深度分析用 Web；共享同一后端、同一候选人库、同一 AI。下面是两端的实时预览（可直接交互）。</p>
+        <div class="k">One Product · Two Entries</div>
+        <h2>一体：工作台就是 Boss 的侧边栏</h2>
+        <p>下面是一个真实的整合预览——Boss 页面在左，<b>完整工作台</b>直接停靠在右侧。这不是两个产品，是同一套界面的两种打开方式。</p>
       </div>
-      <div class="forms">
-        <!-- Chrome extension -->
-        <div class="form-card ext">
-          <span class="badge">🧩 Chrome 扩展 · 贴着 Boss</span>
-          <h3>就地触达，不切窗口</h3>
-          <p class="lead">在 Boss 直聘页面右下角浮出侧边栏：读当前候选人 → 拉匹配分 → 把 AI 开场白填入聊天框（只填不发，人确认发送），并守护每日打招呼额度。</p>
-          <ul class="flist">
-            <li><span class="c">✓</span> 一次调用拿到匹配分 + 话术</li>
-            <li><span class="c">✓</span> 每日打招呼限额守护，额度优先给高匹配的人</li>
-            <li><span class="c">✓</span> 坚持“人确认发送”，规避平台风控</li>
-          </ul>
-          <div class="preview">
-            <div class="pbar"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span class="u">🔒 www.zhipin.com</span></div>
-            <div class="pv ext"><iframe src="/mock-boss.html" loading="lazy" title="Chrome 扩展预览"></iframe></div>
-          </div>
-          <a class="btn teal" href="/mock-boss.html" target="_blank">在新标签体验扩展 ↗</a>
+      <div class="preview big">
+        <div class="pbar"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span class="u">🔒 www.zhipin.com　·　右侧为停靠的 Recruit Copilot 工作台</span></div>
+        <div class="pv one"><iframe src="/mock-boss.html" loading="lazy" title="一体化预览"></iframe></div>
+      </div>
+      <div class="aspects">
+        <div class="aspect">
+          <span class="badge ext">🧩 作为 Boss 侧边栏</span>
+          <p>停靠在 Boss 页面右侧：读当前候选人 → 载入档案 → 就地分析与触达，聊天框一键填开场白（只填不发），守护每日打招呼额度。</p>
+          <a class="btn teal" href="/mock-boss.html" target="_blank">体验侧边栏 ↗</a>
         </div>
-
-        <!-- Web app -->
-        <div class="form-card web">
-          <span class="badge">🖥️ Web 工作台 · 深度中枢</span>
-          <h3>分析、看板、对话、同步</h3>
-          <p class="lead">完整工作台：和 AI 直接对话（可加技能）、JD 寻访策略、智能寻访排序、人才看板、主动跟进/激活、通话纪要，并与飞书多维表格双向同步。</p>
-          <ul class="flist">
-            <li><span class="c">✓</span> ChatGPT 式对话 + 可加载自定义技能</li>
-            <li><span class="c">✓</span> 拖拽看板 + 分阶段主动跟进</li>
-            <li><span class="c">✓</span> 飞书双向同步，结论自动沉淀</li>
-          </ul>
-          <div class="preview">
-            <div class="pbar"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span class="u">localhost:5178</span></div>
-            <div class="pv web"><iframe src="/#/kanban" loading="lazy" title="Web 工作台预览"></iframe></div>
-          </div>
+        <div class="aspect">
+          <span class="badge web">🖥️ 作为独立 Web</span>
+          <p>同一套界面全屏打开：AI 对话、JD 寻访、智能排序、人才看板、主动跟进、通话纪要、飞书双向同步——深度分析与管理。</p>
           <a class="btn primary" href="/" target="_blank">打开完整工作台 ↗</a>
         </div>
       </div>
-      <div class="bridge">🔗 <b>同一大脑</b>：扩展在 Boss 侧就地采集与触达，Web 端做深度分析与管理，数据实时互通——在扩展里打过招呼的人，Web 看板里就能继续推进。</div>
     </div>
   </section>
 
